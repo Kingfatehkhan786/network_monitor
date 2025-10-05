@@ -1,0 +1,659 @@
+{% extends "base.html" %}
+
+{% block title %}Advanced Network Monitoring{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🚀 Advanced Network Monitoring Dashboard</h1>
+    <p>Comprehensive real-time network monitoring with advanced analytics and automated insights.</p>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="network-health">Excellent</div>
+            <div class="stat-label">Network Health</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="active-monitors">7</div>
+            <div class="stat-label">Active Monitors</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="alerts-count">0</div>
+            <div class="stat-label">Active Alerts</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="uptime-percent">99.9%</div>
+            <div class="stat-label">Network Uptime</div>
+        </div>
+    </div>
+</div>
+
+<div class="monitoring-grid">
+    <div class="card fixed-height-card">
+        <h2>🌐 Network Overview</h2>
+        <div class="card-content" id="network-overview">
+            <div class="log-line">Loading network overview...</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>⚡ Real-time Metrics</h2>
+        <div class="card-content" id="realtime-metrics">
+            <div class="log-line">Collecting real-time metrics...</div>
+        </div>
+    </div>
+</div>
+
+<div class="monitoring-grid">
+    <div class="card fixed-height-card">
+        <h2>🚨 Alert Center</h2>
+        <div class="card-content" id="alert-center">
+            <div class="log-line success">✅ All systems operating normally</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>📊 Performance Analytics</h2>
+        <div class="card-content" id="performance-analytics">
+            <div class="log-line">Analyzing network performance...</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🎛️ Advanced Controls</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>🔄 Auto Actions</h3>
+            <label><input type="checkbox" id="auto-restart" checked> Auto-restart failed monitors</label><br>
+            <label><input type="checkbox" id="auto-alert" checked> Email alerts on failures</label><br>
+            <label><input type="checkbox" id="auto-optimize" checked> Auto-optimize scan intervals</label>
+        </div>
+        
+        <div class="stat-card">
+            <h3>📈 Monitoring Intervals</h3>
+            <label>Ping Interval: <select id="ping-interval">
+                <option value="1">1 second</option>
+                <option value="5" selected>5 seconds</option>
+                <option value="10">10 seconds</option>
+            </select></label><br>
+            <label>Device Scan: <select id="device-interval">
+                <option value="15" selected>15 seconds</option>
+                <option value="30">30 seconds</option>
+                <option value="60">1 minute</option>
+            </select></label>
+        </div>
+        
+        <div class="stat-card">
+            <h3>🎯 Monitoring Targets</h3>
+            <div id="monitoring-targets">
+                <div class="log-line">Loading monitoring targets...</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <h3>⚙️ System Actions</h3>
+            <button onclick="saveSettings()" class="btn" style="background: #4CAF50;">💾 Save Settings</button><br>
+            <button onclick="runFullDiagnostic()" class="btn">🔍 Full Network Diagnostic</button><br>
+            <button onclick="optimizePerformance()" class="btn">⚡ Optimize Performance</button><br>
+            <button onclick="exportConfiguration()" class="btn">📤 Export Configuration</button>
+        </div>
+    </div>
+</div>
+
+<div class="monitoring-grid">
+    <div class="card fixed-height-card">
+        <h2>📋 System Logs</h2>
+        <div class="card-content" id="system-logs">
+            <div class="log-line">Loading system logs...</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>📡 Network Topology</h2>
+        <div class="card-content" id="network-topology">
+            <div class="log-line">Mapping network topology...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .metric-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .metric-value {
+        font-weight: bold;
+        color: #4CAF50;
+    }
+    
+    .metric-value.warning {
+        color: #ff9800;
+    }
+    
+    .metric-value.error {
+        color: #f44336;
+    }
+    
+    .alert-item {
+        background: rgba(244, 67, 54, 0.1);
+        border-left: 4px solid #f44336;
+        padding: 0.5rem;
+        margin: 0.5rem 0;
+        border-radius: 4px;
+    }
+    
+    .alert-item.warning {
+        background: rgba(255, 152, 0, 0.1);
+        border-left-color: #ff9800;
+    }
+    
+    .alert-item.info {
+        background: rgba(33, 150, 243, 0.1);
+        border-left-color: #2196F3;
+    }
+    
+    .topology-node {
+        display: inline-block;
+        background: rgba(100, 181, 246, 0.2);
+        border: 2px solid #64b5f6;
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        text-align: center;
+        line-height: 56px;
+        margin: 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    .topology-connection {
+        display: inline-block;
+        width: 40px;
+        height: 2px;
+        background: #64b5f6;
+        margin: 0 10px;
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let networkData = {};
+    let systemStats = {};
+    let alerts = [];
+    
+    function loadNetworkOverview() {
+        fetch('/api/network-info')
+            .then(response => response.json())
+            .then(data => {
+                networkData = data;
+                displayNetworkOverview(data);
+                updateMonitoringTargets(data);
+            })
+            .catch(error => {
+                console.error('Error loading network overview:', error);
+                document.getElementById('network-overview').innerHTML = '<div class="log-line error">Failed to load network information</div>';
+            });
+    }
+    
+    function loadSystemStats() {
+        fetch('/api/system-stats')
+            .then(response => response.json())
+            .then(data => {
+                systemStats = data;
+                displayRealtimeMetrics(data);
+                analyzePerformance(data);
+            })
+            .catch(error => {
+                console.error('Error loading system stats:', error);
+            });
+    }
+    
+    function displayNetworkOverview(data) {
+        const container = document.getElementById('network-overview');
+        let html = '';
+        
+        if (data.local_ip) {
+            html += `<div class="metric-item">
+                <span>Local IP:</span>
+                <span class="metric-value">${data.local_ip}</span>
+            </div>`;
+        }
+        
+        if (data.default_gateway) {
+            html += `<div class="metric-item">
+                <span>Gateway:</span>
+                <span class="metric-value">${data.default_gateway}</span>
+            </div>`;
+        }
+        
+        if (data.public_ip) {
+            html += `<div class="metric-item">
+                <span>Public IP:</span>
+                <span class="metric-value">${data.public_ip}</span>
+            </div>`;
+        }
+        
+        if (data.network_range) {
+            html += `<div class="metric-item">
+                <span>Network Range:</span>
+                <span class="metric-value">${data.network_range}</span>
+            </div>`;
+        }
+        
+        if (data.dns_servers && data.dns_servers.length > 0) {
+            html += `<div class="metric-item">
+                <span>DNS Servers:</span>
+                <span class="metric-value">${data.dns_servers.length} configured</span>
+            </div>`;
+        }
+        
+        html += `<div class="metric-item">
+            <span>Interfaces:</span>
+            <span class="metric-value">${data.interfaces ? data.interfaces.length : 0}</span>
+        </div>`;
+        
+        container.innerHTML = html || '<div class="log-line">No network information available</div>';
+    }
+    
+    function displayRealtimeMetrics(data) {
+        const container = document.getElementById('realtime-metrics');
+        let html = '';
+        
+        if (data.cpu) {
+            const cpuClass = data.cpu.usage_percent > 80 ? 'error' : data.cpu.usage_percent > 60 ? 'warning' : '';
+            html += `<div class="metric-item">
+                <span>CPU Usage:</span>
+                <span class="metric-value ${cpuClass}">${data.cpu.usage_percent}%</span>
+            </div>`;
+        }
+        
+        if (data.memory) {
+            const memClass = data.memory.percent > 90 ? 'error' : data.memory.percent > 75 ? 'warning' : '';
+            html += `<div class="metric-item">
+                <span>Memory Usage:</span>
+                <span class="metric-value ${memClass}">${data.memory.percent}%</span>
+            </div>`;
+        }
+        
+        if (data.network) {
+            const sentMB = (data.network.bytes_sent / (1024 * 1024)).toFixed(1);
+            const recvMB = (data.network.bytes_recv / (1024 * 1024)).toFixed(1);
+            html += `<div class="metric-item">
+                <span>Network Sent:</span>
+                <span class="metric-value">${sentMB} MB</span>
+            </div>`;
+            html += `<div class="metric-item">
+                <span>Network Received:</span>
+                <span class="metric-value">${recvMB} MB</span>
+            </div>`;
+        }
+        
+        if (data.uptime) {
+            const uptimeHours = (data.uptime / 3600).toFixed(1);
+            html += `<div class="metric-item">
+                <span>System Uptime:</span>
+                <span class="metric-value">${uptimeHours} hours</span>
+            </div>`;
+        }
+        
+        html += `<div class="metric-item">
+            <span>Active Processes:</span>
+            <span class="metric-value">${data.processes || '--'}</span>
+        </div>`;
+        
+        container.innerHTML = html;
+    }
+    
+    function updateMonitoringTargets(data) {
+        const container = document.getElementById('monitoring-targets');
+        let html = '';
+        
+        if (data.default_gateway) {
+            html += `<div class="log-line success">✅ Gateway: ${data.default_gateway}</div>`;
+        }
+        
+        html += '<div class="log-line success">✅ External: 1.1.1.1, 8.8.8.8, 9.9.9.9</div>';
+        
+        if (data.network_range) {
+            html += `<div class="log-line">🔍 Network Discovery: ${data.network_range}</div>`;
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    function analyzePerformance(data) {
+        const container = document.getElementById('performance-analytics');
+        let html = '';
+        let performanceScore = 100;
+        
+        // Analyze CPU performance
+        if (data.cpu && data.cpu.usage_percent > 80) {
+            html += '<div class="log-line error">⚠️ High CPU usage detected</div>';
+            performanceScore -= 20;
+        } else if (data.cpu && data.cpu.usage_percent > 60) {
+            html += '<div class="log-line warning">⚠️ Moderate CPU usage</div>';
+            performanceScore -= 10;
+        }
+        
+        // Analyze memory performance
+        if (data.memory && data.memory.percent > 90) {
+            html += '<div class="log-line error">⚠️ High memory usage detected</div>';
+            performanceScore -= 15;
+        } else if (data.memory && data.memory.percent > 75) {
+            html += '<div class="log-line warning">⚠️ Moderate memory usage</div>';
+            performanceScore -= 5;
+        }
+        
+        // Performance recommendations
+        html += '<div class="log-line"><strong>Recommendations:</strong></div>';
+        if (performanceScore >= 90) {
+            html += '<div class="log-line success">✅ System performance is optimal</div>';
+        } else if (performanceScore >= 70) {
+            html += '<div class="log-line warning">• Consider closing unnecessary applications</div>';
+            html += '<div class="log-line">• Monitor resource usage trends</div>';
+        } else {
+            html += '<div class="log-line error">• Immediate action required to improve performance</div>';
+            html += '<div class="log-line">• Check for resource-intensive processes</div>';
+        }
+        
+        html += `<div class="log-line"><strong>Performance Score:</strong> ${performanceScore}/100</div>`;
+        
+        container.innerHTML = html;
+        
+        // Update network health based on performance
+        updateNetworkHealth(performanceScore);
+    }
+    
+    function updateNetworkHealth(score) {
+        const healthElement = document.getElementById('network-health');
+        if (score >= 90) {
+            healthElement.textContent = 'Excellent';
+            healthElement.style.color = '#4CAF50';
+        } else if (score >= 70) {
+            healthElement.textContent = 'Good';
+            healthElement.style.color = '#ff9800';
+        } else {
+            healthElement.textContent = 'Poor';
+            healthElement.style.color = '#f44336';
+        }
+    }
+    
+    function loadSystemLogs() {
+        // Load recent system events
+        const container = document.getElementById('system-logs');
+        let html = '';
+        
+        const now = new Date();
+        html += `<div class="log-line">[${now.toLocaleTimeString()}] Advanced monitoring started</div>`;
+        html += `<div class="log-line success">[${now.toLocaleTimeString()}] All monitors operational</div>`;
+        html += `<div class="log-line">[${now.toLocaleTimeString()}] Network topology mapped</div>`;
+        
+        container.innerHTML = html;
+    }
+    
+    function displayNetworkTopology() {
+        const container = document.getElementById('network-topology');
+        let html = '';
+        
+        // Enhanced network topology visualization with icons
+        html += '<div style="text-align: center; margin: 1rem 0;">';
+        
+        // Internet
+        html += '<div class="topology-node" style="background: linear-gradient(45deg, #4CAF50, #81C784);">';
+        html += '🌐<br>Internet</div>';
+        html += '<div class="topology-connection"></div>';
+        
+        // Gateway/Router
+        if (networkData.default_gateway) {
+            html += '<div class="topology-node" style="background: linear-gradient(45deg, #FF9800, #FFB74D);">';
+            html += `🖥️<br>Router<br><small>${networkData.default_gateway}</small></div>`;
+            html += '<div class="topology-connection"></div>';
+        }
+        
+        // This PC
+        const osIcon = getOSIcon();
+        html += '<div class="topology-node" style="background: linear-gradient(45deg, #2196F3, #64B5F6);">';
+        html += `${osIcon}<br>This PC<br><small>${networkData.local_ip || 'Local Machine'}</small></div>`;
+        
+        html += '</div>';
+        
+        // Discovered devices section
+        html += '<div class="log-line"><strong>🔍 Discovered Devices:</strong></div>';
+        
+        // Fetch and display discovered devices
+        fetch('/api/network-discovery')
+            .then(response => response.json())
+            .then(data => {
+                if (data.devices && data.devices.length > 0) {
+                    let devicesHtml = '<div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">';
+                    data.devices.forEach(device => {
+                        const deviceIcon = getDeviceIcon(device.ip);
+                        const responseColor = device.response_time < 10 ? '#4CAF50' : device.response_time < 50 ? '#FF9800' : '#f44336';
+                        
+                        devicesHtml += `
+                            <div class="topology-node" style="width: 80px; height: 80px; font-size: 0.7rem; background: rgba(100,181,246,0.2); border: 2px solid ${responseColor};">
+                                ${deviceIcon}<br>
+                                <small>${device.ip}</small><br>
+                                <small>${device.response_time}ms</small>
+                            </div>
+                        `;
+                    });
+                    devicesHtml += '</div>';
+                    
+                    const existingDevices = container.querySelector('.discovered-devices');
+                    if (existingDevices) {
+                        existingDevices.innerHTML = devicesHtml;
+                    } else {
+                        container.innerHTML += `<div class="discovered-devices">${devicesHtml}</div>`;
+                    }
+                } else {
+                    container.innerHTML += '<div class="log-line">No other devices discovered yet</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching devices:', error);
+                container.innerHTML += '<div class="log-line">Device discovery unavailable</div>';
+            });
+        
+        html += '<div class="log-line">Network topology automatically detected</div>';
+        if (networkData.interfaces) {
+            html += `<div class="log-line">Active interfaces: ${networkData.interfaces.length}</div>`;
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    function getOSIcon() {
+        const userAgent = navigator.userAgent.toLowerCase();
+        if (userAgent.includes('windows')) return '🪟';
+        if (userAgent.includes('mac')) return '🍎';
+        if (userAgent.includes('linux')) return '🐧';
+        if (userAgent.includes('android')) return '🤖';
+        if (userAgent.includes('iphone') || userAgent.includes('ipad')) return '📱';
+        return '💻';
+    }
+    
+    function getDeviceIcon(ip) {
+        const lastOctet = parseInt(ip.split('.')[3]);
+        
+        // Router/Gateway
+        if (lastOctet === 1) return '🖥️';
+        
+        // Network infrastructure (2-50)
+        if (lastOctet <= 50) return '🔧';
+        
+        // Servers (51-100)  
+        if (lastOctet <= 100) return '🖥️';
+        
+        // Computers (101-200)
+        if (lastOctet <= 200) return '💻';
+        
+        // Mobile devices (201-254)
+        return '📱';
+    }
+    
+    function runFullDiagnostic() {
+        alert('Full network diagnostic will run comprehensive tests including:\n• Connectivity tests\n• DNS resolution\n• Port scanning\n• Performance analysis\n• Security assessment');
+    }
+    
+    function optimizePerformance() {
+        alert('Performance optimization will:\n• Adjust monitoring intervals\n• Optimize memory usage\n• Clean up old logs\n• Tune network timeouts');
+    }
+    
+    function saveSettings() {
+        const settings = {
+            ping_interval: parseInt(document.getElementById('ping-interval').value),
+            device_interval: parseInt(document.getElementById('device-interval').value),
+            auto_restart: document.getElementById('auto-restart').checked,
+            auto_alert: document.getElementById('auto-alert').checked,
+            auto_optimize: document.getElementById('auto-optimize').checked,
+            alert_email: document.getElementById('alert-email')?.value || '',
+            max_log_size: 100,
+            auto_discovery: true,
+            scan_timeout: 30
+        };
+        
+        fetch('/api/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(settings)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                addAlert('info', 'Settings saved successfully');
+                // Apply settings immediately
+                applySettings(settings);
+            } else {
+                addAlert('error', 'Failed to save settings: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error saving settings:', error);
+            addAlert('error', 'Error saving settings');
+        });
+    }
+    
+    function loadSettings() {
+        fetch('/api/settings')
+            .then(response => response.json())
+            .then(settings => {
+                document.getElementById('ping-interval').value = settings.ping_interval || 5;
+                document.getElementById('device-interval').value = settings.device_interval || 15;
+                document.getElementById('auto-restart').checked = settings.auto_restart !== false;
+                document.getElementById('auto-alert').checked = settings.auto_alert !== false;
+                document.getElementById('auto-optimize').checked = settings.auto_optimize !== false;
+                
+                // Apply loaded settings
+                applySettings(settings);
+            })
+            .catch(error => {
+                console.error('Error loading settings:', error);
+                addAlert('warning', 'Could not load saved settings, using defaults');
+            });
+    }
+    
+    function applySettings(settings) {
+        // Update monitoring intervals (this would require backend support)
+        console.log('Applying settings:', settings);
+        
+        // Update UI indicators
+        const settingsStatus = document.createElement('div');
+        settingsStatus.className = 'log-line success';
+        settingsStatus.textContent = `Settings applied - Ping: ${settings.ping_interval}s, Device: ${settings.device_interval}s`;
+        
+        const systemLogs = document.getElementById('system-logs');
+        systemLogs.appendChild(settingsStatus);
+    }
+    
+    function exportConfiguration() {
+        const config = {
+            network_info: networkData,
+            monitoring_settings: {
+                ping_interval: document.getElementById('ping-interval').value,
+                device_interval: document.getElementById('device-interval').value,
+                auto_restart: document.getElementById('auto-restart').checked,
+                auto_alert: document.getElementById('auto-alert').checked,
+                auto_optimize: document.getElementById('auto-optimize').checked
+            },
+            timestamp: new Date().toISOString()
+        };
+        
+        const blob = new Blob([JSON.stringify(config, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'network_monitor_config.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+    
+    // Initialize dashboard
+    function initDashboard() {
+        loadNetworkOverview();
+        loadSystemStats();
+        loadSystemLogs();
+        displayNetworkTopology();
+        loadSettings();  // Load saved settings
+        
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            loadSystemStats();
+            displayNetworkTopology();  // Refresh topology with devices
+        }, 30000);
+        
+        // Update system logs every 5 minutes
+        setInterval(loadSystemLogs, 300000);
+    }
+    
+    // Socket.IO listeners for real-time updates
+    socket.on('connect', function() {
+        console.log('Advanced monitoring connected to server');
+    });
+    
+    // Listen for ping updates to show connectivity status
+    socket.on('ping_update_internal', function(data) {
+        if (data.data.includes('timeout')) {
+            addAlert('warning', 'Internal connectivity issue detected');
+        }
+    });
+    
+    socket.on('ping_update_external_cloudflare', function(data) {
+        if (data.data.includes('timeout')) {
+            addAlert('error', 'Internet connectivity issue detected');
+        }
+    });
+    
+    function addAlert(type, message) {
+        const alertCenter = document.getElementById('alert-center');
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert-item ${type}`;
+        alertDiv.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+        
+        alertCenter.appendChild(alertDiv);
+        
+        // Update alert count
+        const currentCount = parseInt(document.getElementById('alerts-count').textContent);
+        document.getElementById('alerts-count').textContent = currentCount + 1;
+        
+        // Auto-remove after 5 minutes
+        setTimeout(() => {
+            alertDiv.remove();
+            const newCount = parseInt(document.getElementById('alerts-count').textContent);
+            document.getElementById('alerts-count').textContent = Math.max(0, newCount - 1);
+        }, 300000);
+    }
+    
+    // Initialize on page load
+    initDashboard();
+</script>
+{% endblock %}

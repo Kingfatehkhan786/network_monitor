@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extra_styles %}
+<style>
+.dns-provider-section {
+    margin-bottom: 3rem;
+}
+
+.dns-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border-left: 4px solid #3498db;
+}
+
+.cloudflare-header { border-left-color: #f39c12; }
+.google-header { border-left-color: #4285f4; }
+.quad9-header { border-left-color: #9b59b6; }
+
+.dns-icon {
+    font-size: 2rem;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dns-info h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    color: #fff;
+}
+
+.dns-info p {
+    margin: 0.2rem 0 0 0;
+    color: #bdc3c7;
+    font-family: 'Courier New', monospace;
+}
+
+.dns-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 0.9rem;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #2ecc71;
+}
+
+.status-dot.offline { background: #e74c3c; }
+.status-dot.warning { background: #f39c12; }
+
+/* Use the same stats-grid style as internal ping */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 1.5rem;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #fff;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: #bdc3c7;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .dns-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .dns-status {
+        margin-left: 0;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>📡 {{ title }}</h1>
+    <p>Monitoring multiple public hosts simultaneously. Select a host below to view its live data.</p>
+</div>
+
+{% for host in hosts %}
+<div class="dns-provider-section">
+    <div class="dns-header {% if host.name == 'Cloudflare' %}cloudflare-header{% elif host.name == 'Google' %}google-header{% elif host.name == 'Quad9' %}quad9-header{% endif %}">
+        <div class="dns-icon">
+            {% if host.name == 'Cloudflare' %}☁️{% elif host.name == 'Google' %}🌐{% elif host.name == 'Quad9' %}🛡️{% endif %}
+        </div>
+        <div class="dns-info">
+            <h3>{{ host.name }}</h3>
+            <p>{{ host.ip }}</p>
+        </div>
+        <div class="dns-status">
+            <span class="status-dot" id="status-dot-{{ host.name }}"></span>
+            <span id="status-text-{{ host.name }}">Online</span>
+        </div>
+    </div>
+    
+    <div class="stats-grid">
+        {% if monitor_type == 'ping' %}
+        <div class="stat-card">
+            <div class="stat-value" id="packets-sent-{{ host.name }}">0</div>
+            <div class="stat-label">Packets Sent</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="packets-received-{{ host.name }}">0</div>
+            <div class="stat-label">Packets Received</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="packet-loss-{{ host.name }}">0.0%</div>
+            <div class="stat-label">Packet Loss</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="avg-latency-{{ host.name }}">--</div>
+            <div class="stat-label">Avg Latency</div>
+        </div>
+        {% else %}
+        <div class="stat-card">
+            <div class="stat-value" id="hops-count-{{ host.name }}">0</div>
+            <div class="stat-label">Hops</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="status-value-{{ host.name }}">Waiting</div>
+            <div class="stat-label">Status</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="time-{{ host.name }}">--</div>
+            <div class="stat-label">Time</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="result-{{ host.name }}">--</div>
+            <div class="stat-label">Result</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% for host in hosts %}
+<div class="card host-card" id="card-{{ host.name }}">
+    <h2>📊 Live {{ monitor_type|capitalize }} for 
+        {% if host.name == 'Cloudflare' %}☁️{% elif host.name == 'Google' %}🌐{% elif host.name == 'Quad9' %}🛡️{% endif %}
+        {{ host.name }} (🌍 {{ host.ip }})
+    </h2>
+    <div class="log-container" id="log-{{ host.name }}">
+        <div class="log-line">Initializing monitor...</div>
+    </div>
+</div>
+{% endfor %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const monitorType = '{{ monitor_type }}';
+    const hosts = JSON.parse('{{ hosts|tojson|safe }}');
+    
+    function formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        return `[${date.toLocaleTimeString()}]`;
+    }
+
+    hosts.forEach(host => {
+        const logContainer = document.getElementById(`log-${host.name}`);
+        const statusDot = document.getElementById(`status-dot-${host.name}`);
+        const statusText = document.getElementById(`status-text-${host.name}`);
+
+        let packetsSent = 0;
+        let packetsReceived = 0;
+        let latencies = [];
+        let hopCount = 0;
+
+        // Listen for real-time updates for each host
+        let eventName;
+        if (monitorType === 'traceroute') {
+            eventName = `traceroute_update_external_${host.name.toLowerCase()}`;
+        } else {
+            eventName = `ping_update_external_${host.name.toLowerCase()}`;
+        }
+        
+        socket.on(eventName, function(data) {
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line';
+
+            const timestamp = formatTimestamp(data.timestamp);
+            let content = data.data;
+            let lineClass = '';
+
+            // Handle ping monitoring
+            if (monitorType === 'ping') {
+                // Only count actual ping attempts
+                if (content.includes('Reply from') || content.includes('bytes from') || content.includes('Request timed out') || content.includes('timeout')) {
+                    packetsSent++;
+                    
+                    if (content.includes('Reply from') || content.includes('bytes from')) {
+                        packetsReceived++;
+                        lineClass = 'success';
+                        const timeMatch = content.match(/time[=<]([\d.]+)\s*ms/);
+                        if (timeMatch) {
+                            latencies.push(parseFloat(timeMatch[1]));
+                        }
+                        statusDot.className = 'status-dot';
+                        statusText.textContent = 'Online';
+                    } else if (content.includes('Request timed out') || content.includes('timeout')) {
+                        lineClass = 'error';
+                        statusDot.className = 'status-dot warning';
+                        statusText.textContent = 'Issues';
+                    }
+                    updateStats();
+                }
+            } else if (monitorType === 'traceroute') {
+                // Handle traceroute monitoring
+                if (content.includes('Traceroute started')) {
+                    statusDot.className = 'status-dot warning';
+                    statusText.textContent = 'Running...';
+                    document.getElementById(`status-value-${host.name}`).textContent = 'Running';
+                    lineClass = 'warning';
+                } else if (content.includes('complete') || content.includes('reached')) {
+                    statusDot.className = 'status-dot';
+                    statusText.textContent = 'Complete';
+                    document.getElementById(`status-value-${host.name}`).textContent = 'Complete';
+                    document.getElementById(`result-${host.name}`).textContent = 'Success';
+                    lineClass = 'success';
+                } else if (content.match(/^\s*\d+\s+\d+\s+ms/)) {
+                    // Hop detected
+                    hopCount++;
+                    document.getElementById(`hops-count-${host.name}`).textContent = hopCount;
+                    statusDot.className = 'status-dot';
+                    lineClass = 'success';
+                } else if (content.includes('timeout') || content.includes('* * *')) {
+                    lineClass = 'error';
+                    statusDot.className = 'status-dot offline';
+                }
+            }
+
+            logLine.innerHTML = `${timestamp} ${content}`;
+            if (lineClass) logLine.classList.add(lineClass);
+
+            logContainer.appendChild(logLine);
+            autoScroll(logContainer);
+        });
+
+        function updateStats() {
+            if (monitorType === 'ping') {
+                document.getElementById(`packets-sent-${host.name}`).textContent = packetsSent;
+                document.getElementById(`packets-received-${host.name}`).textContent = packetsReceived;
+                
+                // Calculate packet loss
+                const loss = packetsSent > 0 ? ((packetsSent - packetsReceived) / packetsSent * 100).toFixed(1) : 0;
+                document.getElementById(`packet-loss-${host.name}`).textContent = `${loss}%`;
+
+                if (latencies.length > 0) {
+                    const avgLatency = (latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1);
+                    document.getElementById(`avg-latency-${host.name}`).textContent = `${avgLatency}ms`;
+                }
+            }
+        }
+
+        function autoScroll(container) {
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Load historical stats and recent logs on page load
+        function loadInitialData() {
+            if (monitorType === 'ping') {
+                fetch(`/api/ping-stats/${host.name}`)
+                    .then(response => response.json())
+                    .then(stats => {
+                        if (stats && !stats.error) {
+                            packetsSent = stats.packets_sent || 0;
+                            packetsReceived = stats.packets_received || 0;
+                            if (stats.avg_latency) {
+                                document.getElementById(`avg-latency-${host.name}`).textContent = `${stats.avg_latency}ms`;
+                            }
+                            updateStats();
+                        }
+                    })
+                    .catch(error => console.error(`Error loading stats for ${host.name}:`, error));
+            } else {
+                // For traceroute, set initial status
+                statusDot.className = 'status-dot offline';
+                statusText.textContent = 'Waiting...';
+                document.getElementById(`status-value-${host.name}`).textContent = 'Waiting';
+            }
+
+            const apiLogType = `external_${monitorType}_${host.name}`;
+            fetch(`/api/logs/${apiLogType}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.lines && data.lines.length > 0) {
+                        logContainer.innerHTML = '';
+                        data.lines.slice(-50).forEach(line => {
+                            const logLine = document.createElement('div');
+                            logLine.className = 'log-line';
+                            logLine.innerHTML = line;
+                            if (line.includes('complete') || line.includes('reached')) {
+                                logLine.classList.add('success');
+                            } else if (line.includes('timeout') || line.includes('* * *')) {
+                                logLine.classList.add('error');
+                            } else if (line.includes('Reply from') || line.includes('bytes from')) {
+                                logLine.classList.add('success');
+                            }
+                            logContainer.appendChild(logLine);
+                        });
+                        autoScroll(logContainer);
+                    }
+                })
+                .catch(error => console.error(`Error loading logs for ${host.name}:`, error));
+        }
+
+        loadInitialData();
+    });
+</script>
+{% endblock %}

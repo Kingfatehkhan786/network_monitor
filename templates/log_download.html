@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Log File Downloads{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>📦 Log File Downloads</h1>
+    <p>Select a date range to download all corresponding log files as a single zip archive.</p>
+</div>
+
+<div class="card">
+    <h2>📅 Select Date Range & Log Type</h2>
+    <form id="download-form">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <label for="start-date">Start Date</label>
+                <input type="date" id="start-date" name="start" required style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+            </div>
+            <div class="stat-card">
+                <label for="end-date">End Date</label>
+                <input type="date" id="end-date" name="end" required style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+            </div>
+            <div class="stat-card">
+                <label for="start-time">Start Time</label>
+                <input type="time" id="start-time" name="start_time" value="00:00" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+            </div>
+            <div class="stat-card">
+                <label for="end-time">End Time</label>
+                <input type="time" id="end-time" name="end_time" value="23:59" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+            </div>
+        </div>
+        
+        <div class="card" style="margin-top: 1rem;">
+            <h3>📂 Log Type Selection</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <label><input type="checkbox" id="include-ping" checked> 📡 Ping Logs</label>
+                    <small>Internal and external ping monitoring</small>
+                </div>
+                <div class="stat-card">
+                    <label><input type="checkbox" id="include-traceroute" checked> 🗺️ Traceroute Logs</label>
+                    <small>Network routing analysis</small>
+                </div>
+                <div class="stat-card">
+                    <label><input type="checkbox" id="include-devices" checked> 📱 Device Logs</label>
+                    <small>Network device discovery</small>
+                </div>
+                <div class="stat-card">
+                    <label><input type="checkbox" id="include-timeouts" checked> ⚠️ Timeout Logs</label>
+                    <small>Connection timeout errors</small>
+                </div>
+                <div class="stat-card">
+                    <label><input type="checkbox" id="include-speed" checked> 🚀 Speed Test Logs</label>
+                    <small>Internet speed test results</small>
+                </div>
+                <div class="stat-card">
+                    <label><input type="checkbox" id="include-system" checked> 🗑️ System Logs</label>
+                    <small>Garbage collection and system events</small>
+                </div>
+            </div>
+        </div>
+        
+        <button type="submit" class="btn" style="display: block; margin: 2rem auto; font-size: 1.2rem;">📦 Download Selected Logs</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>📊 Available Log Files</h2>
+    <div id="available-logs">
+        <div class="log-line">Loading available log files...</div>
+    </div>
+</div>
+
+<div class="card" id="download-status" style="display: none;">
+    <h2>📥 Download Status</h2>
+    <p id="status-message">Preparing your download...</p>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Set default dates
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('start-date').value = today;
+    document.getElementById('end-date').value = today;
+
+    const downloadForm = document.getElementById('download-form');
+    const statusCard = document.getElementById('download-status');
+    const statusMessage = document.getElementById('status-message');
+
+    downloadForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        statusCard.style.display = 'block';
+        statusMessage.textContent = 'Zipping files... Please wait.';
+
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+
+        // Construct the URL and trigger the download
+        const downloadUrl = `/api/download-logs?start=${startDate}&end=${endDate}`;
+        
+        // Use fetch to handle potential errors from the API
+        fetch(downloadUrl)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.error || 'Download failed') });
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `network_logs_${startDate}_to_${endDate}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                statusMessage.textContent = 'Download started successfully!';
+            })
+            .catch(error => {
+                statusMessage.textContent = `Error: ${error.message}`;
+            });
+    });
+</script>
+{% endblock %}

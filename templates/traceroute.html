@@ -57,7 +57,7 @@
     let hopTimes = [];
     
     // Listen for real-time traceroute updates
-    socket.on(`tracert_update_${tracertType}`, function(data) {
+    socket.on(`traceroute_update_${tracertType}`, function(data) {
         const logLine = document.createElement('div');
         logLine.className = 'log-line';
         

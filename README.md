@@ -12,7 +12,10 @@ This project is a comprehensive network monitoring suite with both a command-lin
 
 ### Web Interface (Flask & Socket.IO)
 - **Real-time Dashboard**: A modern, responsive web UI to visualize all monitoring data live.
-- **Dedicated Pages**: Separate, auto-updating pages for each monitoring function (ping, traceroute, devices, timeouts).
+- **Multi-Host Monitoring**: Monitors multiple public DNS servers (Cloudflare, Google, Quad9) simultaneously.
+- **Speed Testing**: Built-in internet speed test with real-time progress and visual gauges.
+- **Log Downloads**: Download log files by date range as ZIP archives.
+- **Dedicated Pages**: Separate, auto-updating pages for each monitoring function.
 - **Live Statistics**: Displays packet loss, latency, hop counts, and device counts in real-time.
 - **API Endpoints**: Provides JSON endpoints to fetch recent log data.
 
@@ -39,9 +42,15 @@ This project is a comprehensive network monitoring suite with both a command-lin
 └── traces/                 # Directory for all log files (auto-created)
 ```
 
-## Quick Start
+## Quick Start (Cross-Platform)
 
-### For Windows (Local Development)
+### Universal Startup (Windows, macOS, Linux)
+1.  **Run the startup script** (automatically handles dependencies and system checks):
+    ```bash
+    python start_monitor.py
+    ```
+    
+### Manual Setup
 1.  **Install Dependencies**:
     ```bash
     pip install -r requirements.txt
@@ -51,7 +60,7 @@ This project is a comprehensive network monitoring suite with both a command-lin
     python web_network_monitor.py
     ```
 3.  **Access the Dashboard**:
-    Open your browser and go to `http://localhost:5000`.
+    Open your browser and go to `http://localhost:5000`
 
 ### For Ubuntu / LXC Container (Deployment)
 The `Makefile` automates the entire setup process.

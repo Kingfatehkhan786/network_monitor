@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+
+{% block title %}Network Discovery{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🔍 Network Discovery</h1>
+    <p>Discover and analyze devices on your local network with advanced scanning capabilities.</p>
+    <button onclick="startNetworkScan()" class="btn" id="scan-btn">🚀 Start Network Scan</button>
+    <button onclick="startAdvancedScan()" class="btn" id="advanced-scan-btn">🔬 Advanced Scan</button>
+</div>
+
+<div class="monitoring-grid">
+    <div class="card fixed-height-card">
+        <h2>📱 Discovered Devices</h2>
+        <div class="card-content" id="discovered-devices">
+            <div class="log-line">Click "Start Network Scan" to discover devices</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>📊 Scan Progress</h2>
+        <div class="card-content" id="scan-progress">
+            <div class="log-line">Scan progress will appear here</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📈 Discovery Statistics</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="devices-found">0</div>
+            <div class="stat-label">Devices Found</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="scan-range">--</div>
+            <div class="stat-label">Network Range</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="scan-duration">--</div>
+            <div class="stat-label">Scan Duration</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="response-time-avg">--</div>
+            <div class="stat-label">Avg Response Time</div>
+        </div>
+    </div>
+</div>
+
+<div class="monitoring-grid" id="device-details" style="display: none;">
+    <div class="card fixed-height-card">
+        <h2>🔍 Device Details</h2>
+        <div class="card-content" id="selected-device-info">
+            <div class="log-line">Select a device to view details</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>🛡️ Security Analysis</h2>
+        <div class="card-content" id="device-security">
+            <div class="log-line">Security analysis will appear for selected device</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .device-item {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        cursor: pointer;
+        transition: background 0.3s ease;
+    }
+    
+    .device-item:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .device-item.selected {
+        background: rgba(76, 175, 80, 0.2);
+        border: 1px solid #4CAF50;
+    }
+    
+    .device-ip {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #64b5f6;
+    }
+    
+    .device-response {
+        color: #4CAF50;
+        font-size: 0.9rem;
+    }
+    
+    .device-offline {
+        opacity: 0.6;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        background-color: rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        margin: 0.5rem 0;
+    }
+    
+    .progress-bar-inner {
+        width: 0%;
+        height: 20px;
+        background: linear-gradient(90deg, #4CAF50, #81C784);
+        border-radius: 10px;
+        transition: width 0.5s ease-in-out;
+        text-align: center;
+        line-height: 20px;
+        color: white;
+        font-size: 0.8rem;
+    }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let scanStartTime;
+    let discoveredDevices = [];
+    let selectedDevice = null;
+    
+    function startNetworkScan() {
+        const scanBtn = document.getElementById('scan-btn');
+        const advancedBtn = document.getElementById('advanced-scan-btn');
+        
+        scanBtn.disabled = true;
+        advancedBtn.disabled = true;
+        scanBtn.textContent = '🔄 Scanning...';
+        scanStartTime = Date.now();
+        
+        // Clear previous results
+        document.getElementById('discovered-devices').innerHTML = '<div class="log-line">Starting network discovery...</div>';
+        document.getElementById('scan-progress').innerHTML = '<div class="log-line">Initializing scan...</div>';
+        document.getElementById('devices-found').textContent = '0';
+        document.getElementById('scan-duration').textContent = '--';
+        
+        // First get network info
+        fetch('/api/network-info')
+            .then(response => response.json())
+            .then(networkInfo => {
+                if (networkInfo.network_range) {
+                    document.getElementById('scan-range').textContent = networkInfo.network_range;
+                    updateScanProgress('Network range detected: ' + networkInfo.network_range);
+                    
+                    // Start actual discovery
+                    return fetch('/api/network-discovery');
+                } else {
+                    throw new Error('Could not determine network range');
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayDiscoveredDevices(data.devices || []);
+                updateScanStatistics(data.devices || []);
+            })
+            .catch(error => {
+                console.error('Network scan error:', error);
+                document.getElementById('discovered-devices').innerHTML = '<div class="log-line error">Scan failed: ' + error.message + '</div>';
+            })
+            .finally(() => {
+                scanBtn.disabled = false;
+                advancedBtn.disabled = false;
+                scanBtn.textContent = '🚀 Start Network Scan';
+                
+                const duration = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+                document.getElementById('scan-duration').textContent = duration + 's';
+            });
+    }
+    
+    function startAdvancedScan() {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.8); z-index: 1000; display: flex; 
+            align-items: center; justify-content: center;
+        `;
+        
+        modal.innerHTML = `
+            <div style="background: #1a237e; padding: 2rem; border-radius: 10px; max-width: 500px; width: 90%;">
+                <h2>🔬 Advanced Network Scan</h2>
+                <div style="margin: 1rem 0;">
+                    <label>IP Range (CIDR notation):</label>
+                    <input type="text" id="ip-range" value="192.168.1.0/24" 
+                           style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+                </div>
+                <div style="margin: 1rem 0;">
+                    <label>Port Range:</label>
+                    <input type="text" id="port-range" value="22,80,443,3389" 
+                           style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+                    <small>Common ports: 21,22,23,25,53,80,135,139,443,993,995,3389,5900,8080</small>
+                </div>
+                <div style="margin: 1rem 0;">
+                    <label><input type="checkbox" id="include-ports" checked> Include port scanning</label><br>
+                    <label><input type="checkbox" id="os-detection"> Enable OS detection</label>
+                </div>
+                <div style="text-align: center; margin-top: 2rem;">
+                    <button onclick="runAdvancedScan()" class="btn">🚀 Start Advanced Scan</button>
+                    <button onclick="closeModal()" class="btn" style="margin-left: 1rem;">❌ Cancel</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        window.currentModal = modal;
+    }
+    
+    function closeModal() {
+        if (window.currentModal) {
+            document.body.removeChild(window.currentModal);
+            window.currentModal = null;
+        }
+    }
+    
+    function runAdvancedScan() {
+        const ipRange = document.getElementById('ip-range').value;
+        const portRange = document.getElementById('port-range').value;
+        const osDetection = document.getElementById('os-detection').checked;
+
+        closeModal();
+
+        const scanBtn = document.getElementById('advanced-scan-btn');
+        scanBtn.disabled = true;
+        scanBtn.textContent = '🔄 Advanced Scanning...';
+
+        updateScanProgress(`Advanced scan started for ${ipRange}`);
+
+        fetch('/api/advanced-scan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                ip_range: ipRange,
+                port_range: portRange,
+                os_detection: osDetection
+            }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                updateScanProgress(`Error: ${data.error}`);
+                scanBtn.disabled = false;
+                scanBtn.textContent = '🔬 Advanced Scan';
+            }
+        })
+        .catch(err => {
+            updateScanProgress(`Error: ${err}`);
+            scanBtn.disabled = false;
+            scanBtn.textContent = '🔬 Advanced Scan';
+        });
+    }
+
+    socket.on('advanced_scan_update', function(data) {
+        const discoveredContainer = document.getElementById('discovered-devices-list');
+        const logLine = document.createElement('div');
+        logLine.className = 'log-line success';
+        let content = `<strong>${data.ip}</strong> is up. Open ports: `;
+        content += data.ports.map(p => `${p.port} (${p.service.service})`).join(', ');
+        logLine.innerHTML = content;
+        discoveredContainer.appendChild(logLine);
+    });
+    
+    function updateScanProgress(message) {
+        const progressContainer = document.getElementById('scan-progress');
+        const logLine = document.createElement('div');
+        logLine.className = 'log-line';
+        logLine.textContent = new Date().toLocaleTimeString() + ': ' + message;
+        progressContainer.appendChild(logLine);
+        
+        // Auto-scroll
+        progressContainer.scrollTop = progressContainer.scrollHeight;
+    }
+    
+    function displayDiscoveredDevices(devices) {
+        const container = document.getElementById('discovered-devices');
+        discoveredDevices = devices;
+        
+        if (devices.length === 0) {
+            container.innerHTML = '<div class="log-line warning">No devices found on the network</div>';
+            return;
+        }
+        
+        let html = '';
+        devices.forEach((device, index) => {
+            const responseClass = device.response_time ? 'device-response' : '';
+            const responseText = device.response_time ? `${device.response_time}ms` : 'No response';
+            
+            html += `
+                <div class="device-item" onclick="selectDevice(${index})">
+                    <div class="device-ip">${device.ip}</div>
+                    <div class="${responseClass}">Response: ${responseText}</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">Status: ${device.alive ? 'Online' : 'Offline'}</div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        updateScanProgress(`Found ${devices.length} devices`);
+    }
+    
+    function selectDevice(index) {
+        selectedDevice = discoveredDevices[index];
+        
+        // Update UI to show selection
+        document.querySelectorAll('.device-item').forEach((item, i) => {
+            if (i === index) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+        
+        // Show device details
+        displayDeviceDetails(selectedDevice);
+        document.getElementById('device-details').style.display = 'grid';
+        
+        // Start port scan for selected device
+        if (selectedDevice.alive) {
+            scanDevicePorts(selectedDevice.ip);
+        }
+    }
+    
+    function displayDeviceDetails(device) {
+        const container = document.getElementById('selected-device-info');
+        let html = `
+            <div class="log-line success"><strong>IP Address:</strong> ${device.ip}</div>
+            <div class="log-line"><strong>Status:</strong> ${device.alive ? 'Online' : 'Offline'}</div>
+        `;
+        
+        if (device.response_time) {
+            html += `<div class="log-line"><strong>Response Time:</strong> ${device.response_time}ms</div>`;
+        }
+        
+        // Try to determine device type based on IP pattern
+        const deviceType = guessDeviceType(device.ip);
+        if (deviceType) {
+            html += `<div class="log-line"><strong>Likely Type:</strong> ${deviceType}</div>`;
+        }
+        
+        html += '<div class="log-line"><strong>Actions:</strong></div>';
+        html += `<div class="log-line">• <a href="/port-scanner?target=${device.ip}" class="btn" style="display: inline; padding: 0.25rem 0.5rem; font-size: 0.8rem;">🔍 Port Scan</a></div>`;
+        
+        container.innerHTML = html;
+    }
+    
+    function scanDevicePorts(ip) {
+        const securityContainer = document.getElementById('device-security');
+        securityContainer.innerHTML = '<div class="log-line">🔍 Scanning ports...</div>';
+        
+        fetch('/api/port-scan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                target_ip: ip,
+                scan_type: 'common'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            displaySecurityAnalysis(data);
+        })
+        .catch(error => {
+            securityContainer.innerHTML = '<div class="log-line error">Port scan failed: ' + error.message + '</div>';
+        });
+    }
+    
+    function displaySecurityAnalysis(scanData) {
+        const container = document.getElementById('device-security');
+        let html = '';
+        
+        if (scanData.error) {
+            html = `<div class="log-line error">Error: ${scanData.error}</div>`;
+        } else {
+            html += `<div class="log-line"><strong>Host Status:</strong> ${scanData.status}</div>`;
+            
+            if (scanData.open_ports && scanData.open_ports.length > 0) {
+                html += `<div class="log-line warning"><strong>Open Ports:</strong> ${scanData.open_ports.join(', ')}</div>`;
+                
+                // Security warnings
+                const highRiskPorts = scanData.open_ports.filter(port => [21, 23, 135, 139, 3389].includes(port));
+                if (highRiskPorts.length > 0) {
+                    html += `<div class="log-line error"><strong>⚠️ Security Risk:</strong> High-risk ports detected</div>`;
+                }
+                
+                if (scanData.services && scanData.services.length > 0) {
+                    html += '<div class="log-line"><strong>Services:</strong></div>';
+                    scanData.services.forEach(service => {
+                        html += `<div class="log-line">• ${service.port}/${service.service}</div>`;
+                    });
+                }
+            } else {
+                html += '<div class="log-line success">✅ No open ports detected</div>';
+            }
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    function updateScanStatistics(devices) {
+        document.getElementById('devices-found').textContent = devices.length;
+        
+        // Calculate average response time
+        const responseTimes = devices.filter(d => d.response_time).map(d => d.response_time);
+        if (responseTimes.length > 0) {
+            const avgResponse = (responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length).toFixed(1);
+            document.getElementById('response-time-avg').textContent = avgResponse + 'ms';
+        }
+    }
+    
+    function guessDeviceType(ip) {
+        const parts = ip.split('.');
+        const lastOctet = parseInt(parts[3]);
+        
+        if (lastOctet === 1) {
+            return 'Router/Gateway';
+        } else if (lastOctet < 50) {
+            return 'Network Infrastructure';
+        } else if (lastOctet > 200) {
+            return 'DHCP Client';
+        } else {
+            return 'Computer/Device';
+        }
+    }
+    
+    // Load network info on page load
+    fetch('/api/network-info')
+        .then(response => response.json())
+        .then(data => {
+            if (data.network_range) {
+                document.getElementById('scan-range').textContent = data.network_range;
+            }
+        })
+        .catch(error => console.error('Error loading network info:', error));
+</script>
+{% endblock %}

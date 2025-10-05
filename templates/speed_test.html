@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Network Speed Test{% endblock %}
+
+{% block extra_head %}
+<style>
+    .gauge-container {
+        width: 250px;
+        height: 200px;
+        margin: 1rem auto;
+    }
+    .speed-results {
+        display: flex;
+        justify-content: space-around;
+        text-align: center;
+        margin-top: 2rem;
+    }
+    #start-speed-test-btn {
+        display: block;
+        margin: 2rem auto;
+        font-size: 1.5rem;
+        padding: 1rem 2rem;
+    }
+    .progress-bar {
+        width: 100%;
+        background-color: rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        margin-top: 1rem;
+    }
+    .progress-bar-inner {
+        width: 0%;
+        height: 20px;
+        background: linear-gradient(90deg, #4CAF50, #81C784);
+        border-radius: 10px;
+        transition: width 0.5s ease-in-out;
+    }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/justgage@1.3.1/raphael-2.1.4.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/justgage@1.3.1/justgage.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🚀 Internet Speed Test</h1>
+    <p>Measure your network's download speed, upload speed, and latency.</p>
+    
+    <div style="margin: 1rem 0;">
+        <label for="server-select" style="display: block; margin-bottom: 0.5rem;">Choose Test Server:</label>
+        <select id="server-select" style="width: 100%; padding: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+            <option value="">Auto (Best Server)</option>
+        </select>
+    </div>
+    
+    <button id="start-speed-test-btn" class="btn">Start Test</button>
+</div>
+
+<div class="card" id="results-card" style="display: none;">
+    <h2>📊 Speed Test Results</h2>
+    <div class="speed-results">
+        <div>
+            <div id="download-gauge" class="gauge-container"></div>
+            <h3>Download</h3>
+        </div>
+        <div>
+            <div id="upload-gauge" class="gauge-container"></div>
+            <h3>Upload</h3>
+        </div>
+    </div>
+    <div class="stats-grid" style="margin-top: 2rem;">
+        <div class="stat-card">
+            <div class="stat-value" id="ping-result">--</div>
+            <div class="stat-label">Ping / Latency</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="server-info">--</div>
+            <div class="stat-label">Test Server</div>
+        </div>
+    </div>
+</div>
+
+<div class="card" id="progress-card" style="display: none;">
+    <h2>🔄 Test in Progress...</h2>
+    <p id="progress-status">Initializing...</p>
+    <div class="progress-bar">
+        <div class="progress-bar-inner" id="progress-bar-inner"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const startBtn = document.getElementById('start-speed-test-btn');
+    const progressCard = document.getElementById('progress-card');
+    const resultsCard = document.getElementById('results-card');
+    const progressStatus = document.getElementById('progress-status');
+    const progressBar = document.getElementById('progress-bar-inner');
+
+    let downloadGauge, uploadGauge;
+
+    // Load available servers on page load
+    fetch('/api/speed-test-servers')
+        .then(response => response.json())
+        .then(data => {
+            const serverSelect = document.getElementById('server-select');
+            if (data.servers) {
+                data.servers.forEach(server => {
+                    const option = document.createElement('option');
+                    option.value = server.id;
+                    option.textContent = `${server.sponsor} - ${server.name} (${server.distance}km)`;
+                    serverSelect.appendChild(option);
+                });
+            }
+        })
+        .catch(error => console.error('Error loading servers:', error));
+
+    startBtn.addEventListener('click', () => {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Testing...';
+        progressCard.style.display = 'block';
+        resultsCard.style.display = 'none';
+        
+        const serverId = document.getElementById('server-select').value;
+        const testData = serverId ? { server_id: serverId } : {};
+        socket.emit('run_speed_test', testData);
+    });
+
+    socket.on('speed_test_update', (data) => {
+        progressStatus.textContent = data.message || data.status;
+
+        switch (data.status) {
+            case 'starting':
+                progressBar.style.width = '10%';
+                break;
+            case 'server_found':
+                progressBar.style.width = '25%';
+                document.getElementById('server-info').textContent = `${data.server.sponsor} (${data.server.name})`;
+                break;
+            case 'downloading':
+                progressBar.style.width = '40%';
+                break;
+            case 'download_complete':
+                progressBar.style.width = '65%';
+                if (!downloadGauge) {
+                    downloadGauge = new JustGage({
+                        id: 'download-gauge',
+                        value: 0,
+                        min: 0,
+                        max: 100, // Will be updated
+                        title: 'Mbps',
+                        levelColors: ['#f44336', '#ff9800', '#4CAF50']
+                    });
+                }
+                const downloadSpeed = parseFloat(data.download_speed) || parseFloat(data.speed) || 0;
+                downloadGauge.refresh(downloadSpeed, Math.max(100, Math.ceil(downloadSpeed / 10) * 10 + 10));
+                break;
+            case 'uploading':
+                progressBar.style.width = '80%';
+                break;
+            case 'upload_complete':
+                progressBar.style.width = '100%';
+                if (!uploadGauge) {
+                    uploadGauge = new JustGage({
+                        id: 'upload-gauge',
+                        value: 0,
+                        min: 0,
+                        max: 50, // Will be updated
+                        title: 'Mbps',
+                        levelColors: ['#f44336', '#ff9800', '#4CAF50']
+                    });
+                }
+                const uploadSpeed = parseFloat(data.upload_speed) || parseFloat(data.speed) || 0;
+                uploadGauge.refresh(uploadSpeed, Math.max(50, Math.ceil(uploadSpeed / 10) * 10 + 10));
+                break;
+            case 'finished':
+                progressCard.style.display = 'none';
+                resultsCard.style.display = 'block';
+                document.getElementById('ping-result').textContent = `${data.results.ping.toFixed(2)} ms`;
+                startBtn.disabled = false;
+                startBtn.textContent = 'Run Test Again';
+                break;
+            case 'error':
+                progressStatus.textContent = `Error: ${data.message}`;
+                startBtn.disabled = false;
+                startBtn.textContent = 'Try Again';
+                break;
+        }
+    });
+</script>
+{% endblock %}

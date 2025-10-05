@@ -5,10 +5,34 @@
 {% block content %}
 <div class="card">
     <h1>⚠️ Internet Connection Timeout Monitor</h1>
-    <p><strong>Source:</strong> External Ping Monitor (1.1.1.1)</p>
+    <p><strong>Source:</strong> External Ping Monitor (Multiple Hosts)</p>
     <p><strong>Filter:</strong> Request timeout errors only</p>
     <p><strong>Status:</strong> <span class="status-indicator" id="timeout-indicator"></span> <span id="timeout-status">Monitoring...</span></p>
     <p><strong>Last Check:</strong> <span id="last-check">--</span></p>
+</div>
+
+<div class="card">
+    <h2>🔍 Filter Timeout Logs</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <label for="filter-start-date">Start Date:</label>
+            <input type="date" id="filter-start-date" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+        </div>
+        <div class="stat-card">
+            <label for="filter-end-date">End Date:</label>
+            <input type="date" id="filter-end-date" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+        </div>
+        <div class="stat-card">
+            <label for="filter-start-time">Start Time:</label>
+            <input type="time" id="filter-start-time" value="00:00" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+        </div>
+        <div class="stat-card">
+            <label for="filter-end-time">End Time:</label>
+            <input type="time" id="filter-end-time" value="23:59" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+        </div>
+    </div>
+    <button onclick="applyFilter()" class="btn" style="margin-top: 1rem;">🔍 Apply Filter</button>
+    <button onclick="clearFilter()" class="btn" style="margin-top: 1rem;">🗑️ Clear Filter</button>
 </div>
 
 <div class="stats-grid">
@@ -131,10 +155,66 @@
         }
     }
     
-    // Load recent timeout logs
-    fetch('/api/logs/timeouts')
-        .then(response => response.json())
-        .then(data => {
+    function applyFilter() {
+        const startDate = document.getElementById('filter-start-date').value;
+        const endDate = document.getElementById('filter-end-date').value;
+        const startTime = document.getElementById('filter-start-time').value;
+        const endTime = document.getElementById('filter-end-time').value;
+        
+        if (!startDate || !endDate) {
+            alert('Please select both start and end dates');
+            return;
+        }
+        
+        const url = `/api/logs/filtered/timeouts?start=${startDate}&end=${endDate}&start_time=${startTime}&end_time=${endTime}`;
+        
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                displayFilteredLogs(data);
+            })
+            .catch(error => {
+                console.error('Filter error:', error);
+                logContainer.innerHTML = '<div class="log-line error">Error applying filter</div>';
+            });
+    }
+    
+    function clearFilter() {
+        document.getElementById('filter-start-date').value = '';
+        document.getElementById('filter-end-date').value = '';
+        document.getElementById('filter-start-time').value = '00:00';
+        document.getElementById('filter-end-time').value = '23:59';
+        loadRecentTimeouts();
+    }
+    
+    function displayFilteredLogs(data) {
+        logContainer.innerHTML = '';
+        
+        if (data.error) {
+            logContainer.innerHTML = `<div class="log-line error">Error: ${data.error}</div>`;
+            return;
+        }
+        
+        if (data.lines && data.lines.length > 0) {
+            logContainer.innerHTML = `<div class="log-line success">📊 Found ${data.count} timeout entries in range: ${data.date_range}</div>`;
+            
+            data.lines.forEach(line => {
+                const logLine = document.createElement('div');
+                logLine.className = 'log-line error';
+                logLine.innerHTML = `🚨 ${line}`;
+                logContainer.appendChild(logLine);
+            });
+            
+            autoScroll(logContainer);
+        } else {
+            logContainer.innerHTML = `<div class="log-line success">✅ No timeout errors found in the specified time range!</div>`;
+        }
+    }
+    
+    function loadRecentTimeouts() {
+        fetch('/api/logs/timeouts')
+            .then(response => response.json())
+            .then(data => {
             if (data.lines && data.lines.length > 0) {
                 logContainer.innerHTML = '';
                 
@@ -175,6 +255,15 @@
             console.error('Error loading timeout logs:', error);
             logContainer.innerHTML = '<div class="log-line">Loading timeout data...</div>';
         });
+    }
+    
+    // Load recent timeout logs
+    loadRecentTimeouts();
+    
+    // Set today's date as default
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('filter-start-date').value = today;
+    document.getElementById('filter-end-date').value = today;
     
     // Reset daily counters at midnight
     function resetDailyCounters() {

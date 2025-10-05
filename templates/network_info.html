@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Network Information{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🌐 Network Configuration</h1>
+    <p>Comprehensive network information automatically detected from your system.</p>
+    <button onclick="refreshNetworkInfo()" class="btn">🔄 Refresh Network Info</button>
+</div>
+
+<div class="monitoring-grid">
+    <div class="card fixed-height-card">
+        <h2>📡 Network Interfaces</h2>
+        <div class="card-content" id="interfaces-info">
+            <div class="log-line">Loading network interfaces...</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>🔗 Connection Details</h2>
+        <div class="card-content" id="connection-info">
+            <div class="log-line">Loading connection details...</div>
+        </div>
+    </div>
+</div>
+
+<div class="monitoring-grid">
+    <div class="card fixed-height-card">
+        <h2>🌍 External Information</h2>
+        <div class="card-content" id="external-info">
+            <div class="log-line">Loading external information...</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>📊 System Statistics</h2>
+        <div class="card-content" id="system-stats">
+            <div class="log-line">Loading system statistics...</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🎯 Auto-Configuration Status</h2>
+    <div id="auto-config-status">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="gateway-status">--</div>
+                <div class="stat-label">Gateway Detection</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="dns-status">--</div>
+                <div class="stat-label">DNS Detection</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="network-status">--</div>
+                <div class="stat-label">Network Range</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="monitoring-status">--</div>
+                <div class="stat-label">Auto Monitoring</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function loadNetworkInfo() {
+        fetch('/api/network-info')
+            .then(response => response.json())
+            .then(data => {
+                displayNetworkInterfaces(data.interfaces || []);
+                displayConnectionInfo(data);
+                displayExternalInfo(data);
+                updateAutoConfigStatus(data);
+            })
+            .catch(error => {
+                console.error('Error loading network info:', error);
+                document.getElementById('interfaces-info').innerHTML = '<div class="log-line error">Error loading network information</div>';
+            });
+    }
+    
+    function loadSystemStats() {
+        fetch('/api/system-stats')
+            .then(response => response.json())
+            .then(data => {
+                displaySystemStats(data);
+            })
+            .catch(error => {
+                console.error('Error loading system stats:', error);
+                document.getElementById('system-stats').innerHTML = '<div class="log-line error">Error loading system statistics</div>';
+            });
+    }
+    
+    function displayNetworkInterfaces(interfaces) {
+        const container = document.getElementById('interfaces-info');
+        let html = '';
+        
+        interfaces.forEach(iface => {
+            const isPrimary = iface.is_primary ? '<strong>(Primary)</strong>' : '';
+            const status = iface.is_primary ? 'success' : '';
+            
+            html += `<div class="log-line ${status}">
+                <strong>${iface.name}</strong> ${isPrimary}<br>
+                IP: ${iface.ip}<br>
+                Netmask: ${iface.netmask}<br>
+                ${iface.broadcast ? `Broadcast: ${iface.broadcast}` : ''}
+            </div>`;
+        });
+        
+        container.innerHTML = html || '<div class="log-line">No network interfaces found</div>';
+    }
+    
+    function displayConnectionInfo(data) {
+        const container = document.getElementById('connection-info');
+        let html = '';
+        
+        if (data.default_gateway) {
+            html += `<div class="log-line success"><strong>Gateway:</strong> ${data.default_gateway}</div>`;
+        }
+        
+        if (data.local_ip) {
+            html += `<div class="log-line success"><strong>Local IP:</strong> ${data.local_ip}</div>`;
+        }
+        
+        if (data.subnet) {
+            html += `<div class="log-line"><strong>Subnet Mask:</strong> ${data.subnet}</div>`;
+        }
+        
+        if (data.network_range) {
+            html += `<div class="log-line"><strong>Network Range:</strong> ${data.network_range}</div>`;
+        }
+        
+        if (data.dns_servers && data.dns_servers.length > 0) {
+            html += `<div class="log-line"><strong>DNS Servers:</strong></div>`;
+            data.dns_servers.forEach(dns => {
+                html += `<div class="log-line">• ${dns}</div>`;
+            });
+        }
+        
+        container.innerHTML = html || '<div class="log-line">No connection information available</div>';
+    }
+    
+    function displayExternalInfo(data) {
+        const container = document.getElementById('external-info');
+        let html = '';
+        
+        if (data.public_ip) {
+            html += `<div class="log-line success"><strong>Public IP:</strong> ${data.public_ip}</div>`;
+        } else {
+            html += `<div class="log-line warning"><strong>Public IP:</strong> Not detected</div>`;
+        }
+        
+        // Add ISP info if available
+        html += '<div class="log-line"><strong>Connection Type:</strong> Auto-detected</div>';
+        
+        container.innerHTML = html || '<div class="log-line">Loading external information...</div>';
+    }
+    
+    function displaySystemStats(stats) {
+        const container = document.getElementById('system-stats');
+        let html = '';
+        
+        if (stats.cpu) {
+            html += `<div class="log-line"><strong>CPU Usage:</strong> ${stats.cpu.usage_percent}%</div>`;
+            html += `<div class="log-line"><strong>CPU Cores:</strong> ${stats.cpu.count}</div>`;
+        }
+        
+        if (stats.memory) {
+            const memUsedGB = (stats.memory.used / (1024**3)).toFixed(2);
+            const memTotalGB = (stats.memory.total / (1024**3)).toFixed(2);
+            html += `<div class="log-line"><strong>Memory:</strong> ${memUsedGB}GB / ${memTotalGB}GB (${stats.memory.percent}%)</div>`;
+        }
+        
+        if (stats.network) {
+            const sentMB = (stats.network.bytes_sent / (1024**2)).toFixed(2);
+            const recvMB = (stats.network.bytes_recv / (1024**2)).toFixed(2);
+            html += `<div class="log-line"><strong>Network I/O:</strong></div>`;
+            html += `<div class="log-line">• Sent: ${sentMB} MB</div>`;
+            html += `<div class="log-line">• Received: ${recvMB} MB</div>`;
+        }
+        
+        if (stats.uptime) {
+            const uptimeHours = (stats.uptime / 3600).toFixed(1);
+            html += `<div class="log-line"><strong>System Uptime:</strong> ${uptimeHours} hours</div>`;
+        }
+        
+        container.innerHTML = html || '<div class="log-line">No system statistics available</div>';
+    }
+    
+    function updateAutoConfigStatus(data) {
+        // Gateway detection
+        const gatewayStatus = document.getElementById('gateway-status');
+        if (data.default_gateway) {
+            gatewayStatus.textContent = '✅ Detected';
+            gatewayStatus.style.color = '#4CAF50';
+        } else {
+            gatewayStatus.textContent = '❌ Failed';
+            gatewayStatus.style.color = '#f44336';
+        }
+        
+        // DNS detection
+        const dnsStatus = document.getElementById('dns-status');
+        if (data.dns_servers && data.dns_servers.length > 0) {
+            dnsStatus.textContent = `✅ ${data.dns_servers.length} Found`;
+            dnsStatus.style.color = '#4CAF50';
+        } else {
+            dnsStatus.textContent = '❌ None';
+            dnsStatus.style.color = '#f44336';
+        }
+        
+        // Network range detection
+        const networkStatus = document.getElementById('network-status');
+        if (data.network_range) {
+            networkStatus.textContent = '✅ Detected';
+            networkStatus.style.color = '#4CAF50';
+        } else {
+            networkStatus.textContent = '❌ Failed';
+            networkStatus.style.color = '#f44336';
+        }
+        
+        // Auto monitoring status
+        const monitoringStatus = document.getElementById('monitoring-status');
+        if (data.default_gateway && data.local_ip) {
+            monitoringStatus.textContent = '✅ Active';
+            monitoringStatus.style.color = '#4CAF50';
+        } else {
+            monitoringStatus.textContent = '⚠️ Limited';
+            monitoringStatus.style.color = '#ff9800';
+        }
+    }
+    
+    function refreshNetworkInfo() {
+        // Show loading indicators
+        document.getElementById('interfaces-info').innerHTML = '<div class="log-line">🔄 Refreshing network interfaces...</div>';
+        document.getElementById('connection-info').innerHTML = '<div class="log-line">🔄 Updating connection details...</div>';
+        document.getElementById('external-info').innerHTML = '<div class="log-line">🔄 Checking external connectivity...</div>';
+        document.getElementById('system-stats').innerHTML = '<div class="log-line">🔄 Collecting system statistics...</div>';
+        
+        // Force refresh by adding cache-busting parameter
+        const timestamp = Date.now();
+        Promise.all([
+            fetch(`/api/network-info?_=${timestamp}`).then(response => response.json()),
+            fetch(`/api/system-stats?_=${timestamp}`).then(response => response.json())
+        ])
+        .then(([networkData, systemData]) => {
+            displayNetworkInterfaces(networkData.interfaces || []);
+            displayConnectionInfo(networkData);
+            displayExternalInfo(networkData);
+            updateAutoConfigStatus(networkData);
+            displaySystemStats(systemData);
+        })
+        .catch(error => {
+            console.error('Error refreshing:', error);
+            document.getElementById('interfaces-info').innerHTML = '<div class="log-line error">❌ Refresh failed</div>';
+        });
+    }
+    
+    // Load data on page load
+    loadNetworkInfo();
+    loadSystemStats();
+    
+    // Auto-refresh every 30 seconds
+    setInterval(() => {
+        loadNetworkInfo();
+        loadSystemStats();
+    }, 30000);
+</script>
+{% endblock %}

@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Advanced Port Scanner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🔍 Advanced Port Scanner</h1>
+    <p>Scan network hosts for open ports and running services with OS detection.</p>
+</div>
+
+<div class="card">
+    <h2>🎯 Scan Configuration</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <label for="target-ip">Target IP Address:</label>
+            <input type="text" id="target-ip" placeholder="192.168.1.1" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+        </div>
+        <div class="stat-card">
+            <label for="scan-type">Scan Type:</label>
+            <select id="scan-type" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+                <option value="common">Common Ports (Fast)</option>
+                <option value="full">Top 1000 Ports (Comprehensive)</option>
+            </select>
+        </div>
+    </div>
+    <button onclick="startPortScan()" class="btn" id="scan-btn" style="margin-top: 1rem;">🚀 Start Scan</button>
+</div>
+
+<div class="monitoring-grid">
+    <div class="card fixed-height-card">
+        <h2>📊 Scan Results</h2>
+        <div class="card-content" id="scan-results">
+            <div class="log-line">Enter a target IP and click "Start Scan" to begin</div>
+        </div>
+    </div>
+    
+    <div class="card fixed-height-card">
+        <h2>🛡️ Security Analysis</h2>
+        <div class="card-content" id="security-analysis">
+            <div class="log-line">Security analysis will appear after scanning</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📈 Scan Statistics</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="open-ports-count">0</div>
+            <div class="stat-label">Open Ports</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="services-count">0</div>
+            <div class="stat-label">Identified Services</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="scan-duration">--</div>
+            <div class="stat-label">Scan Duration</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="host-status">Unknown</div>
+            <div class="stat-label">Host Status</div>
+        </div>
+    </div>
+</div>
+
+<div class="card" id="quick-targets" style="display: none;">
+    <h2>🎯 Quick Targets</h2>
+    <p>Common network targets for scanning:</p>
+    <div style="margin-top: 1rem;">
+        <button onclick="setTarget('192.168.1.1')" class="btn">Router (192.168.1.1)</button>
+        <button onclick="setTarget('192.168.0.1')" class="btn">Router (192.168.0.1)</button>
+        <button onclick="setTarget('10.0.0.1')" class="btn">Gateway (10.0.0.1)</button>
+        <button onclick="setTarget('127.0.0.1')" class="btn">Localhost</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let scanStartTime;
+    
+    function startPortScan() {
+        const targetIp = document.getElementById('target-ip').value.trim();
+        const scanType = document.getElementById('scan-type').value;
+        const scanBtn = document.getElementById('scan-btn');
+        
+        if (!targetIp) {
+            alert('Please enter a target IP address');
+            return;
+        }
+        
+        // Validate IP format
+        if (!isValidIP(targetIp)) {
+            alert('Please enter a valid IP address');
+            return;
+        }
+        
+        scanBtn.disabled = true;
+        scanBtn.textContent = '🔄 Scanning...';
+        scanStartTime = Date.now();
+        
+        // Clear previous results
+        document.getElementById('scan-results').innerHTML = '<div class="log-line">Starting port scan...</div>';
+        document.getElementById('security-analysis').innerHTML = '<div class="log-line">Analyzing security posture...</div>';
+        
+        // Reset statistics
+        document.getElementById('open-ports-count').textContent = '0';
+        document.getElementById('services-count').textContent = '0';
+        document.getElementById('scan-duration').textContent = '--';
+        document.getElementById('host-status').textContent = 'Scanning';
+        
+        fetch('/api/port-scan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                target_ip: targetIp,
+                scan_type: scanType
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            displayScanResults(data);
+            performSecurityAnalysis(data);
+            updateScanStatistics(data);
+        })
+        .catch(error => {
+            console.error('Scan error:', error);
+            document.getElementById('scan-results').innerHTML = '<div class="log-line error">Scan failed: ' + error.message + '</div>';
+        })
+        .finally(() => {
+            scanBtn.disabled = false;
+            scanBtn.textContent = '🚀 Start Scan';
+            
+            const duration = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+            document.getElementById('scan-duration').textContent = duration + 's';
+        });
+    }
+    
+    function displayScanResults(data) {
+        const container = document.getElementById('scan-results');
+        let html = '';
+        
+        if (data.error) {
+            html = `<div class="log-line error">Error: ${data.error}</div>`;
+        } else {
+            html += `<div class="log-line success"><strong>Host:</strong> ${data.host}</div>`;
+            html += `<div class="log-line"><strong>Status:</strong> ${data.status}</div>`;
+            
+            if (data.os_info && data.os_info.name) {
+                html += `<div class="log-line"><strong>OS:</strong> ${data.os_info.name} (${data.os_info.accuracy}% confidence)</div>`;
+            }
+            
+            if (data.open_ports && data.open_ports.length > 0) {
+                html += `<div class="log-line success"><strong>Open Ports:</strong></div>`;
+                data.open_ports.forEach(port => {
+                    html += `<div class="log-line">• Port ${port}</div>`;
+                });
+            } else {
+                html += `<div class="log-line warning">No open ports detected</div>`;
+            }
+            
+            if (data.services && data.services.length > 0) {
+                html += `<div class="log-line"><strong>Services:</strong></div>`;
+                data.services.forEach(service => {
+                    const version = service.version ? ` (${service.version})` : '';
+                    html += `<div class="log-line">• ${service.port}/${service.service}${version}</div>`;
+                });
+            }
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    function performSecurityAnalysis(data) {
+        const container = document.getElementById('security-analysis');
+        let html = '';
+        let riskLevel = 'Low';
+        let risks = [];
+        
+        if (data.error) {
+            html = '<div class="log-line">Security analysis unavailable due to scan error</div>';
+        } else {
+            // Analyze open ports for security risks
+            if (data.services) {
+                data.services.forEach(service => {
+                    switch(service.port) {
+                        case 21:
+                            risks.push('FTP service detected - consider using SFTP');
+                            riskLevel = 'Medium';
+                            break;
+                        case 22:
+                            risks.push('SSH service detected - ensure strong authentication');
+                            break;
+                        case 23:
+                            risks.push('Telnet service detected - HIGH SECURITY RISK');
+                            riskLevel = 'High';
+                            break;
+                        case 80:
+                            risks.push('HTTP service detected - consider HTTPS');
+                            break;
+                        case 443:
+                            risks.push('HTTPS service detected - good security practice');
+                            break;
+                        case 3389:
+                            risks.push('RDP service detected - ensure strong passwords');
+                            riskLevel = 'Medium';
+                            break;
+                    }
+                });
+            }
+            
+            html += `<div class="log-line"><strong>Risk Level:</strong> <span class="${riskLevel.toLowerCase()}">${riskLevel}</span></div>`;
+            
+            if (risks.length > 0) {
+                html += '<div class="log-line"><strong>Security Recommendations:</strong></div>';
+                risks.forEach(risk => {
+                    const riskClass = risk.includes('HIGH') ? 'error' : risk.includes('consider') ? 'warning' : '';
+                    html += `<div class="log-line ${riskClass}">• ${risk}</div>`;
+                });
+            } else {
+                html += '<div class="log-line success">No obvious security risks detected</div>';
+            }
+            
+            // General recommendations
+            html += '<div class="log-line"><strong>General Recommendations:</strong></div>';
+            html += '<div class="log-line">• Keep all services updated</div>';
+            html += '<div class="log-line">• Use strong authentication</div>';
+            html += '<div class="log-line">• Monitor logs regularly</div>';
+            html += '<div class="log-line">• Consider firewall rules</div>';
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    function updateScanStatistics(data) {
+        if (data.error) return;
+        
+        document.getElementById('open-ports-count').textContent = data.open_ports ? data.open_ports.length : 0;
+        document.getElementById('services-count').textContent = data.services ? data.services.length : 0;
+        document.getElementById('host-status').textContent = data.status || 'Unknown';
+        
+        // Color code host status
+        const statusElement = document.getElementById('host-status');
+        if (data.status === 'up') {
+            statusElement.style.color = '#4CAF50';
+        } else if (data.status === 'down') {
+            statusElement.style.color = '#f44336';
+        } else {
+            statusElement.style.color = '#ff9800';
+        }
+    }
+    
+    function setTarget(ip) {
+        document.getElementById('target-ip').value = ip;
+    }
+    
+    function isValidIP(ip) {
+        const regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        return regex.test(ip);
+    }
+    
+    // Load network info to get gateway for quick targets
+    fetch('/api/network-info')
+        .then(response => response.json())
+        .then(data => {
+            if (data.default_gateway) {
+                document.getElementById('quick-targets').style.display = 'block';
+                // Add detected gateway as a quick target
+                const quickTargets = document.querySelector('#quick-targets div');
+                const gatewayBtn = document.createElement('button');
+                gatewayBtn.className = 'btn';
+                gatewayBtn.textContent = `Detected Gateway (${data.default_gateway})`;
+                gatewayBtn.onclick = () => setTarget(data.default_gateway);
+                quickTargets.appendChild(gatewayBtn);
+            }
+        })
+        .catch(error => console.error('Error loading network info:', error));
+</script>
+{% endblock %}
