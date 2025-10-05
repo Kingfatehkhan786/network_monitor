@@ -20,23 +20,9 @@ except ImportError:
     SPEEDTEST_AVAILABLE = False
     print("Speedtest module not available")
 
-# Import enhanced speed test providers
-try:
-    from speed_test_providers import speed_test_manager
-    ENHANCED_SPEEDTEST_AVAILABLE = True
-    print("Enhanced speed test providers loaded")
-except ImportError as e:
-    ENHANCED_SPEEDTEST_AVAILABLE = False
-    print(f"Enhanced speed test providers not available: {e}")
-
-# Import simple speed test as ultimate fallback
-try:
-    from simple_speed_test import simple_speed_test
-    SIMPLE_SPEEDTEST_AVAILABLE = True
-    print("Simple HTTP speed test loaded as fallback")
-except ImportError as e:
-    SIMPLE_SPEEDTEST_AVAILABLE = False
-    print(f"Simple speed test not available: {e}")
+# Enhanced speed test providers removed - keeping it simple
+ENHANCED_SPEEDTEST_AVAILABLE = False
+SIMPLE_SPEEDTEST_AVAILABLE = False
 import socket
 import ipaddress
 import psutil
