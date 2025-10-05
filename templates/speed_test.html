@@ -45,6 +45,16 @@
     <p>Measure your network's download speed, upload speed, and latency.</p>
     
     <div style="margin: 1rem 0;">
+        <label for="provider-select" style="display: block; margin-bottom: 0.5rem;">Choose Speed Test Provider:</label>
+        <select id="provider-select" style="width: 100%; padding: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
+            <option value="ookla">🚀 Ookla Speedtest.net (Most Popular)</option>
+            <option value="fast">📺 Fast.com (Netflix CDN)</option>
+            <option value="libre">🔓 LibreSpeed (Open Source)</option>
+            <option value="simple">🔗 Simple HTTP Test (Firewall-friendly)</option>
+        </select>
+    </div>
+    
+    <div style="margin: 1rem 0;">
         <label for="server-select" style="display: block; margin-bottom: 0.5rem;">Choose Test Server:</label>
         <select id="server-select" style="width: 100%; padding: 0.5rem; border-radius: 5px; border: 1px solid #fff; background: rgba(0,0,0,0.2); color: #fff;">
             <option value="">Auto (Best Server)</option>
@@ -52,6 +62,13 @@
     </div>
     
     <button id="start-speed-test-btn" class="btn">Start Test</button>
+</div>
+
+<div class="card" id="logs-card" style="display: none;">
+    <h2>📝 Speed Test Logs</h2>
+    <div class="log-container" id="speed-test-logs" style="height: 300px; background: #1e1e1e; color: #fff; padding: 1rem; border-radius: 5px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85rem;">
+        <div class="log-line">Waiting for test to start...</div>
+    </div>
 </div>
 
 <div class="card" id="results-card" style="display: none;">
@@ -96,22 +113,60 @@
     const progressBar = document.getElementById('progress-bar-inner');
 
     let downloadGauge, uploadGauge;
+    let currentProvider = 'ookla';
 
-    // Load available servers on page load
-    fetch('/api/speed-test-servers')
-        .then(response => response.json())
-        .then(data => {
-            const serverSelect = document.getElementById('server-select');
-            if (data.servers) {
-                data.servers.forEach(server => {
-                    const option = document.createElement('option');
-                    option.value = server.id;
-                    option.textContent = `${server.sponsor} - ${server.name} (${server.distance}km)`;
-                    serverSelect.appendChild(option);
-                });
-            }
-        })
-        .catch(error => console.error('Error loading servers:', error));
+    // Load available servers for selected provider
+    function loadServers(provider) {
+        const serverSelect = document.getElementById('server-select');
+        serverSelect.innerHTML = '<option value="">Auto (Best Server)</option>';
+        
+        // Simple HTTP test doesn't need server selection
+        if (provider === 'simple') {
+            const option = document.createElement('option');
+            option.value = 'http_endpoints';
+            option.textContent = 'Multiple HTTP Endpoints (Google, Cloudflare, etc.)';
+            serverSelect.appendChild(option);
+            return;
+        }
+        
+        fetch(`/api/speed-test-servers?provider=${provider}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.servers) {
+                    data.servers.forEach(server => {
+                        const option = document.createElement('option');
+                        option.value = server.id;
+                        option.textContent = `${server.sponsor} - ${server.name} (${server.distance}km)`;
+                        serverSelect.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => console.error('Error loading servers:', error));
+    }
+
+    // Provider selection handler
+    document.getElementById('provider-select').addEventListener('change', function() {
+        currentProvider = this.value;
+        loadServers(currentProvider);
+    });
+
+    // Load initial servers
+    loadServers(currentProvider);
+
+    function addLogEntry(message, type = 'info') {
+        const logsContainer = document.getElementById('speed-test-logs');
+        const logLine = document.createElement('div');
+        logLine.className = 'log-line';
+        
+        const timestamp = new Date().toLocaleTimeString();
+        const typeIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+        
+        logLine.innerHTML = `[${timestamp}] ${typeIcon} ${message}`;
+        logLine.style.color = type === 'success' ? '#00ff00' : type === 'error' ? '#ff4444' : type === 'warning' ? '#ffaa00' : '#ffffff';
+        
+        logsContainer.appendChild(logLine);
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
 
     startBtn.addEventListener('click', () => {
         startBtn.disabled = true;
@@ -119,66 +174,112 @@
         progressCard.style.display = 'block';
         resultsCard.style.display = 'none';
         
+        // Show and clear logs
+        const logsCard = document.getElementById('logs-card');
+        logsCard.style.display = 'block';
+        document.getElementById('speed-test-logs').innerHTML = '';
+        
         const serverId = document.getElementById('server-select').value;
-        const testData = serverId ? { server_id: serverId } : {};
+        const testData = { 
+            provider: currentProvider,
+            server_id: serverId || null
+        };
+        
+        addLogEntry(`Starting speed test with ${currentProvider.toUpperCase()} provider`);
+        if (serverId) {
+            addLogEntry(`Using server: ${serverId}`);
+        } else {
+            addLogEntry('Auto-selecting best server');
+        }
+        
         socket.emit('run_speed_test', testData);
     });
 
     socket.on('speed_test_update', (data) => {
-        progressStatus.textContent = data.message || data.status;
+        const message = data.message || data.status;
+        progressStatus.textContent = message;
+        
+        // Add to logs
+        addLogEntry(message, data.status === 'error' ? 'error' : data.status === 'finished' ? 'success' : 'info');
 
         switch (data.status) {
             case 'starting':
                 progressBar.style.width = '10%';
                 break;
+            case 'server':
+                progressBar.style.width = '20%';
+                break;
             case 'server_found':
                 progressBar.style.width = '25%';
-                document.getElementById('server-info').textContent = `${data.server.sponsor} (${data.server.name})`;
+                const serverName = data.server ? `${data.server.sponsor || 'Unknown'} (${data.server.name || 'Unknown'})` : 'Server Selected';
+                document.getElementById('server-info').textContent = serverName;
+                addLogEntry(`Connected to server: ${serverName}`, 'success');
                 break;
             case 'downloading':
                 progressBar.style.width = '40%';
+                addLogEntry('Testing download speed...', 'info');
                 break;
             case 'download_complete':
                 progressBar.style.width = '65%';
+                const downloadSpeed = parseFloat(data.download_speed) || 0;
+                addLogEntry(`Download speed: ${downloadSpeed.toFixed(2)} Mbps`, 'success');
+                
                 if (!downloadGauge) {
                     downloadGauge = new JustGage({
                         id: 'download-gauge',
-                        value: 0,
+                        value: downloadSpeed,
                         min: 0,
-                        max: 100, // Will be updated
-                        title: 'Mbps',
-                        levelColors: ['#f44336', '#ff9800', '#4CAF50']
+                        max: Math.max(300, Math.ceil(downloadSpeed / 50) * 50 + 50),
+                        title: `${downloadSpeed.toFixed(2)} Mbps`,
+                        levelColors: ['#f44336', '#ff9800', '#4CAF50'],
+                        humanFriendly: true,
+                        humanFriendlyDecimal: 2
                     });
+                } else {
+                    downloadGauge.refresh(downloadSpeed, Math.max(300, Math.ceil(downloadSpeed / 50) * 50 + 50));
                 }
-                const downloadSpeed = parseFloat(data.download_speed) || parseFloat(data.speed) || 0;
-                downloadGauge.refresh(downloadSpeed, Math.max(100, Math.ceil(downloadSpeed / 10) * 10 + 10));
                 break;
             case 'uploading':
                 progressBar.style.width = '80%';
+                addLogEntry('Testing upload speed...', 'info');
                 break;
             case 'upload_complete':
                 progressBar.style.width = '100%';
+                const uploadSpeed = parseFloat(data.upload_speed) || 0;
+                addLogEntry(`Upload speed: ${uploadSpeed.toFixed(2)} Mbps`, 'success');
+                
                 if (!uploadGauge) {
                     uploadGauge = new JustGage({
                         id: 'upload-gauge',
-                        value: 0,
+                        value: uploadSpeed,
                         min: 0,
-                        max: 50, // Will be updated
-                        title: 'Mbps',
-                        levelColors: ['#f44336', '#ff9800', '#4CAF50']
+                        max: Math.max(250, Math.ceil(uploadSpeed / 50) * 50 + 50),
+                        title: `${uploadSpeed.toFixed(2)} Mbps`,
+                        levelColors: ['#f44336', '#ff9800', '#4CAF50'],
+                        humanFriendly: true,
+                        humanFriendlyDecimal: 2
                     });
+                } else {
+                    uploadGauge.refresh(uploadSpeed, Math.max(250, Math.ceil(uploadSpeed / 50) * 50 + 50));
                 }
-                const uploadSpeed = parseFloat(data.upload_speed) || parseFloat(data.speed) || 0;
-                uploadGauge.refresh(uploadSpeed, Math.max(50, Math.ceil(uploadSpeed / 10) * 10 + 10));
                 break;
             case 'finished':
                 progressCard.style.display = 'none';
                 resultsCard.style.display = 'block';
-                document.getElementById('ping-result').textContent = `${data.results.ping.toFixed(2)} ms`;
+                
+                // Display results
+                const results = data.results || {};
+                const ping = results.ping || 0;
+                document.getElementById('ping-result').textContent = `${ping.toFixed(2)} ms`;
+                
+                addLogEntry(`Speed test completed successfully!`, 'success');
+                addLogEntry(`Final Results - Download: ${results.download_mbps?.toFixed(2) || 0} Mbps, Upload: ${results.upload_mbps?.toFixed(2) || 0} Mbps, Ping: ${ping.toFixed(2)} ms`, 'success');
+                
                 startBtn.disabled = false;
                 startBtn.textContent = 'Run Test Again';
                 break;
             case 'error':
+                addLogEntry(`Error: ${data.message}`, 'error');
                 progressStatus.textContent = `Error: ${data.message}`;
                 startBtn.disabled = false;
                 startBtn.textContent = 'Try Again';

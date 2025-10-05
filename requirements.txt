@@ -1,9 +1,13 @@
-# This dependency is required for running the dashboard UI on Windows.
-windows-curses; sys_platform == "win32"
+# Network Monitor Requirements
 Flask==3.0.0
 flask-socketio==5.3.6
 python-socketio==5.10.0
 speedtest-cli==2.1.3
-iperf3==0.1.11
 psutil==5.9.8
 requests==2.31.0
+beautifulsoup4==4.14.2
+sch-way2sms==0.0.1
+
+# Optional Windows support
+windows-curses; sys_platform == "win32"
+iperf3==0.1.11

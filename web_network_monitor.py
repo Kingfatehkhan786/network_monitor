@@ -13,7 +13,30 @@ from flask_socketio import SocketIO, emit
 import queue
 import zipfile
 import io
-import speedtest
+try:
+    import speedtest
+    SPEEDTEST_AVAILABLE = True
+except ImportError:
+    SPEEDTEST_AVAILABLE = False
+    print("Speedtest module not available")
+
+# Import enhanced speed test providers
+try:
+    from speed_test_providers import speed_test_manager
+    ENHANCED_SPEEDTEST_AVAILABLE = True
+    print("Enhanced speed test providers loaded")
+except ImportError as e:
+    ENHANCED_SPEEDTEST_AVAILABLE = False
+    print(f"Enhanced speed test providers not available: {e}")
+
+# Import simple speed test as ultimate fallback
+try:
+    from simple_speed_test import simple_speed_test
+    SIMPLE_SPEEDTEST_AVAILABLE = True
+    print("Simple HTTP speed test loaded as fallback")
+except ImportError as e:
+    SIMPLE_SPEEDTEST_AVAILABLE = False
+    print(f"Simple speed test not available: {e}")
 import socket
 import ipaddress
 import psutil
@@ -41,7 +64,7 @@ GC_INTERVAL = 300  # seconds (5 minutes) - garbage collection interval
 LOG_FOLDER = "traces"
 current_date = datetime.now().strftime('%Y-%m-%d')
 LOG_PING_INTERNAL = os.path.join(LOG_FOLDER, f"internal_ping_{current_date}.log")
-LOG_PING_EXTERNAL_TEMPLATE = os.path.join(LOG_FOLDER, 'external_ping_{host}_{date}.log')
+LOG_PING_EXTERNAL_TEMPLATE = os.path.join(LOG_FOLDER, "external_ping_{host}_{date}.log")
 LOG_TRACERT_INTERNAL = os.path.join(LOG_FOLDER, f"internal_traceroute_{current_date}.log")
 LOG_TRACERT_EXTERNAL = os.path.join(LOG_FOLDER, f"external_traceroute_{current_date}.log")
 LOG_DEVICES = os.path.join(LOG_FOLDER, f"device_monitor_{current_date}.log")
@@ -49,13 +72,10 @@ LOG_TIMEOUTS = os.path.join(LOG_FOLDER, f"timeout_errors_{current_date}.log")
 
 # --- Flask Application Setup ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'network_monitor_secret_key_2025'
+app.secret_key = 'network_monitor_secret_key_change_in_production'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# --- Locks for thread safety ---
-log_rotation_lock = threading.Lock()
-
-# --- Garbage Collection Variables ---
+# Initialize timing variables
 last_gc_time = time.time()
 gc_counter = 0
 
@@ -587,7 +607,7 @@ def traceroute_monitor(host, label, log_file, data_queue):
         
         time.sleep(1)
 
-def run_speed_test(server_id=None):
+def run_speed_test(provider='ookla', server_id=None):
     """Run an internet speed test in a background thread."""
     try:
         socketio.emit('speed_test_update', {'status': 'starting', 'message': 'Initializing speed test...'})
@@ -597,7 +617,49 @@ def run_speed_test(server_id=None):
         
         socketio.emit('speed_test_update', {'status': 'server', 'message': 'Finding servers...'})
         
-        if server_id:
+        # Check if we should use simple HTTP test
+        if provider == 'simple' and SIMPLE_SPEEDTEST_AVAILABLE:
+            try:
+                def callback(data):
+                    socketio.emit('speed_test_update', data)
+                
+                results = simple_speed_test.run_full_test(callback)
+                
+                # Log results
+                log_file = os.path.join(LOG_FOLDER, f"speed_tests_{current_date}.log")
+                append_to_log(log_file, json.dumps(results) + '\n')
+                return
+            except Exception as simple_error:
+                print(f"Simple speed test failed: {simple_error}")
+                socketio.emit('speed_test_update', {
+                    'status': 'error', 
+                    'message': f'Simple HTTP test failed: {str(simple_error)}'
+                })
+                return
+        
+        # Check if we should use enhanced speed test
+        elif ENHANCED_SPEEDTEST_AVAILABLE and provider != 'ookla':
+            try:
+                # Use enhanced speed test system
+                def callback(data):
+                    socketio.emit('speed_test_update', data)
+                
+                results = speed_test_manager.run_speed_test(provider, server_id, callback)
+                
+                # Log results
+                log_file = os.path.join(LOG_FOLDER, f"speed_tests_{current_date}.log")
+                append_to_log(log_file, json.dumps(results) + '\n')
+                return
+            except Exception as enhanced_error:
+                print(f"Enhanced speed test failed for {provider}: {enhanced_error}")
+                socketio.emit('speed_test_update', {
+                    'status': 'warning', 
+                    'message': f'{provider.title()} provider failed, trying Ookla fallback...'
+                })
+                # Continue to Ookla fallback
+            
+        # Use Ookla speedtest
+        if server_id and server_id.isdigit():
             try:
                 # Use specific server with better error handling
                 server_id_int = int(server_id)
@@ -620,17 +682,35 @@ def run_speed_test(server_id=None):
         socketio.emit('speed_test_update', {'status': 'downloading', 'message': 'Measuring download speed...'})
         st.download()
         download_speed = st.results.download / 1_000_000  # Convert to Mbps
-        socketio.emit('speed_test_update', {'status': 'download_complete', 'download_speed': download_speed, 'speed': f"{download_speed:.2f}"})
+        socketio.emit('speed_test_update', {
+            'status': 'download_complete', 
+            'download_speed': download_speed,
+            'message': f'Download speed: {download_speed:.2f} Mbps'
+        })
 
         socketio.emit('speed_test_update', {'status': 'uploading', 'message': 'Measuring upload speed...'})
         st.upload()
         upload_speed = st.results.upload / 1_000_000  # Convert to Mbps
-        socketio.emit('speed_test_update', {'status': 'upload_complete', 'upload_speed': upload_speed, 'speed': f"{upload_speed:.2f}"})
+        socketio.emit('speed_test_update', {
+            'status': 'upload_complete', 
+            'upload_speed': upload_speed,
+            'message': f'Upload speed: {upload_speed:.2f} Mbps'
+        })
 
-        results = st.results.dict()
-        results['download_mbps'] = download_speed
-        results['upload_mbps'] = upload_speed
-        socketio.emit('speed_test_update', {'status': 'finished', 'results': results})
+        results = {
+            'download': st.results.download,
+            'upload': st.results.upload,
+            'ping': st.results.ping,
+            'download_mbps': download_speed,
+            'upload_mbps': upload_speed,
+            'server': st.results.server
+        }
+        
+        socketio.emit('speed_test_update', {
+            'status': 'finished', 
+            'results': results,
+            'message': f'Speed test completed! Download: {download_speed:.2f} Mbps, Upload: {upload_speed:.2f} Mbps'
+        })
         
         # Log results
         log_file = os.path.join(LOG_FOLDER, f"speed_tests_{current_date}.log")
@@ -638,17 +718,40 @@ def run_speed_test(server_id=None):
 
     except Exception as e:
         error_str = str(e)
-        # Provide better error messages
+        print(f"Primary speed test failed: {error_str}")
+        
+        # Try simple HTTP speed test as last resort
+        if SIMPLE_SPEEDTEST_AVAILABLE:
+            try:
+                socketio.emit('speed_test_update', {
+                    'status': 'fallback', 
+                    'message': 'Primary speed test failed, trying simple HTTP test...'
+                })
+                
+                def callback(data):
+                    socketio.emit('speed_test_update', data)
+                
+                results = simple_speed_test.run_full_test(callback)
+                
+                # Log results
+                log_file = os.path.join(LOG_FOLDER, f"speed_tests_{current_date}.log")
+                append_to_log(log_file, json.dumps(results) + '\n')
+                return
+                
+            except Exception as simple_error:
+                print(f"Simple speed test also failed: {simple_error}")
+        
+        # If all methods fail, provide helpful error message
         if "HTTP Error 403" in error_str or "36223" in error_str:
-            error_message = "Speed test server access denied. Try selecting a different server or check firewall settings."
+            error_message = "All speed test methods blocked by firewall. Please check network settings or try from a different network."
         elif "timeout" in error_str.lower() or "timed out" in error_str.lower():
             error_message = "Speed test timed out. Please check your internet connection and try again."
         elif "connection" in error_str.lower() or "network" in error_str.lower():
-            error_message = "Cannot connect to speed test servers. Please check your internet connectivity."
+            error_message = "Cannot connect to any speed test servers. Please check your internet connectivity."
         else:
-            error_message = f"Speed test failed: {error_str}"
+            error_message = f"All speed test methods failed. Error: {error_str}"
         
-        print(f"Speed test error: {error_message}")
+        print(f"Final speed test error: {error_message}")
         socketio.emit('speed_test_update', {'status': 'error', 'message': error_message})
 
 def device_monitor():
@@ -899,6 +1002,17 @@ def download_logs():
 def get_speed_test_servers():
     """Get available speed test servers"""
     try:
+        provider = request.args.get('provider', 'ookla')
+        
+        if ENHANCED_SPEEDTEST_AVAILABLE and provider != 'ookla':
+            # Use enhanced speed test system for non-Ookla providers
+            servers = speed_test_manager.get_provider_servers(provider)
+            return jsonify({'servers': servers})
+        
+        # Default Ookla behavior
+        if not SPEEDTEST_AVAILABLE:
+            return jsonify({'error': 'Speedtest not available', 'servers': []}), 500
+            
         st = speedtest.Speedtest()
         servers = st.get_servers()
         server_list = []
@@ -910,7 +1024,8 @@ def get_speed_test_servers():
                     'name': server['name'],
                     'sponsor': server['sponsor'],
                     'country': server['country'],
-                    'distance': round(server['d'], 2)
+                    'distance': round(server['d'], 2),
+                    'provider': 'ookla'
                 })
         
         # Sort by distance and limit to 10
@@ -1170,9 +1285,15 @@ def handle_connect():
 
 @socketio.on('run_speed_test')
 def handle_run_speed_test(data=None):
-    server_id = data.get('server_id') if data else None
-    print(f"Received request to run speed test with server: {server_id}")
-    socketio.start_background_task(run_speed_test, server_id)
+    if data:
+        server_id = data.get('server_id')
+        provider = data.get('provider', 'ookla')
+    else:
+        server_id = None
+        provider = 'ookla'
+    
+    print(f"Received request to run speed test with provider: {provider}, server: {server_id}")
+    socketio.start_background_task(run_speed_test, provider, server_id)
 
 @socketio.on('disconnect')
 def handle_disconnect():

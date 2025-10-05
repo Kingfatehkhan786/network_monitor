@@ -7,14 +7,14 @@ Supports SMS and Email alerts for network issues
 import smtplib
 import requests
 import json
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import os
 
 # User Configuration
 EMAIL = "kingfatehkhan786@gmail.com"
-PHONE = "+919873408924"
+PHONE = "+910000000000"
 
 class NotificationManager:
     def __init__(self):
@@ -31,7 +31,7 @@ class NotificationManager:
         """Send email notification using free SMTP (Gmail)"""
         try:
             # Create message
-            msg = MimeMultipart()
+            msg = MIMEMultipart()
             msg['From'] = self.smtp_config['username']
             msg['To'] = self.email
             msg['Subject'] = f"🚨 Network Alert - {subject}"
@@ -65,7 +65,7 @@ class NotificationManager:
             </html>
             """
             
-            msg.attach(MimeText(html_body, 'html'))
+            msg.attach(MIMEText(html_body, 'html'))
             
             # Send email
             server = smtplib.SMTP(self.smtp_config['server'], self.smtp_config['port'])

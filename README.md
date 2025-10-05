@@ -28,7 +28,7 @@ This project is a comprehensive network monitoring suite with both a command-lin
 ```
 /
 ├── web_network_monitor.py  # Main Flask web application
-├── network_monitor.py      # Original console application
+{{ ... }}
 ├── requirements.txt        # Python dependencies
 ├── Makefile                # For easy setup in Ubuntu/LXC
 ├── README.md               # This file
