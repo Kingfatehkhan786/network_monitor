@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Timeout Errors Monitor{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>⚠️ Internet Connection Timeout Monitor</h1>
+    <p><strong>Source:</strong> External Ping Monitor (1.1.1.1)</p>
+    <p><strong>Filter:</strong> Request timeout errors only</p>
+    <p><strong>Status:</strong> <span class="status-indicator" id="timeout-indicator"></span> <span id="timeout-status">Monitoring...</span></p>
+    <p><strong>Last Check:</strong> <span id="last-check">--</span></p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="total-timeouts">0</div>
+        <div class="stat-label">Total Timeouts</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="timeouts-today">0</div>
+        <div class="stat-label">Timeouts Today</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="last-timeout">--</div>
+        <div class="stat-label">Last Timeout</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="connection-health">Good</div>
+        <div class="stat-label">Connection Health</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🚨 Recent Timeout Events</h2>
+    <div class="log-container" id="timeout-log">
+        <div class="log-line">Loading timeout events...</div>
+        <div class="log-line">No timeouts detected yet - this is good!</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📈 Timeout Analysis</h2>
+    <div id="timeout-analysis">
+        <div class="log-line">✅ Connection is stable</div>
+        <div class="log-line">📊 Analysis will update as timeouts are detected</div>
+        <div class="log-line">🔍 Monitoring external connectivity to 1.1.1.1</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🛠️ Troubleshooting Tips</h2>
+    <div class="log-container" style="max-height: 150px;">
+        <div class="log-line">💡 If you see frequent timeouts:</div>
+        <div class="log-line">• Check your internet connection</div>
+        <div class="log-line">• Restart your router/modem</div>
+        <div class="log-line">• Contact your ISP if issues persist</div>
+        <div class="log-line">• Check for network congestion</div>
+        <div class="log-line">• Verify DNS settings</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const logContainer = document.getElementById('timeout-log');
+    const timeoutIndicator = document.getElementById('timeout-indicator');
+    const timeoutStatus = document.getElementById('timeout-status');
+    
+    let totalTimeouts = 0;
+    let timeoutsToday = 0;
+    let lastTimeoutTime = null;
+    
+    // Listen for external ping updates to detect timeouts
+    socket.on('ping_update_external', function(data) {
+        document.getElementById('last-check').textContent = new Date().toLocaleTimeString();
+        
+        // Check if this is a timeout
+        if (data.data.includes('Request timed out') || data.data.includes('timeout')) {
+            totalTimeouts++;
+            timeoutsToday++;
+            lastTimeoutTime = new Date();
+            
+            // Add timeout entry to log
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line error';
+            logLine.innerHTML = `${formatTimestamp(data.timestamp)} 🚨 TIMEOUT: ${data.data}`;
+            logContainer.appendChild(logLine);
+            autoScroll(logContainer);
+            
+            // Update stats
+            updateTimeoutStats();
+            
+            // Update status
+            timeoutStatus.textContent = 'Timeout Detected!';
+            timeoutIndicator.className = 'status-indicator status-warning';
+            
+            // Reset status after 10 seconds
+            setTimeout(() => {
+                timeoutStatus.textContent = 'Monitoring...';
+                timeoutIndicator.className = 'status-indicator status-online';
+            }, 10000);
+        } else {
+            // Good ping response
+            timeoutStatus.textContent = 'Connection OK';
+            timeoutIndicator.className = 'status-indicator status-online';
+        }
+    });
+    
+    function updateTimeoutStats() {
+        document.getElementById('total-timeouts').textContent = totalTimeouts;
+        document.getElementById('timeouts-today').textContent = timeoutsToday;
+        
+        if (lastTimeoutTime) {
+            document.getElementById('last-timeout').textContent = lastTimeoutTime.toLocaleTimeString();
+        }
+        
+        // Update connection health
+        const healthElement = document.getElementById('connection-health');
+        if (timeoutsToday === 0) {
+            healthElement.textContent = 'Excellent';
+            healthElement.style.color = '#4CAF50';
+        } else if (timeoutsToday < 5) {
+            healthElement.textContent = 'Good';
+            healthElement.style.color = '#ff9800';
+        } else if (timeoutsToday < 20) {
+            healthElement.textContent = 'Fair';
+            healthElement.style.color = '#ff5722';
+        } else {
+            healthElement.textContent = 'Poor';
+            healthElement.style.color = '#f44336';
+        }
+    }
+    
+    // Load recent timeout logs
+    fetch('/api/logs/timeouts')
+        .then(response => response.json())
+        .then(data => {
+            if (data.lines && data.lines.length > 0) {
+                logContainer.innerHTML = '';
+                
+                // Count timeouts from loaded data
+                let loadedTimeouts = 0;
+                const today = new Date().toDateString();
+                
+                data.lines.forEach(line => {
+                    if (line.includes('Request timed out') || line.includes('timeout')) {
+                        loadedTimeouts++;
+                        
+                        // Check if timeout is from today
+                        const lineDate = new Date(line.match(/\[([\d-]+)/)?.[1]).toDateString();
+                        if (lineDate === today) {
+                            timeoutsToday++;
+                        }
+                        
+                        const logLine = document.createElement('div');
+                        logLine.className = 'log-line error';
+                        logLine.innerHTML = `🚨 ${line}`;
+                        logContainer.appendChild(logLine);
+                    }
+                });
+                
+                totalTimeouts = loadedTimeouts;
+                updateTimeoutStats();
+                
+                if (loadedTimeouts === 0) {
+                    logContainer.innerHTML = '<div class="log-line success">✅ No timeout errors found - connection is stable!</div>';
+                } else {
+                    autoScroll(logContainer);
+                }
+            } else {
+                logContainer.innerHTML = '<div class="log-line success">✅ No timeout errors recorded yet!</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading timeout logs:', error);
+            logContainer.innerHTML = '<div class="log-line">Loading timeout data...</div>';
+        });
+    
+    // Reset daily counters at midnight
+    function resetDailyCounters() {
+        const now = new Date();
+        const tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
+        
+        const msUntilMidnight = tomorrow.getTime() - now.getTime();
+        
+        setTimeout(() => {
+            timeoutsToday = 0;
+            updateTimeoutStats();
+            resetDailyCounters(); // Schedule next reset
+        }, msUntilMidnight);
+    }
+    
+    resetDailyCounters();
+</script>
+{% endblock %}

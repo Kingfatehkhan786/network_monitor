@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🗺️ {{ title }}</h1>
+    <p><strong>Target Host:</strong> {{ host }}</p>
+    <p><strong>Status:</strong> <span class="status-indicator status-online"></span> <span id="tracert-status">Running...</span></p>
+    <p><strong>Last Trace:</strong> <span id="last-trace">--</span></p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="hop-count">--</div>
+        <div class="stat-label">Total Hops</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="trace-time">--</div>
+        <div class="stat-label">Trace Duration</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="avg-hop-time">--</div>
+        <div class="stat-label">Avg Hop Time</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-traces">0</div>
+        <div class="stat-label">Total Traces</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🔍 Real-time Traceroute Results</h2>
+    <div class="log-container" id="tracert-log">
+        <div class="log-line">Initializing traceroute to {{ host }}...</div>
+        <div class="log-line">Waiting for trace data...</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📊 Route Analysis</h2>
+    <div id="route-analysis">
+        <div class="log-line">Route analysis will appear here after traces complete...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const tracertType = '{{ type }}';
+    const host = '{{ host }}';
+    const logContainer = document.getElementById('tracert-log');
+    
+    let totalTraces = 0;
+    let currentHops = 0;
+    let traceStartTime = null;
+    let hopTimes = [];
+    
+    // Listen for real-time traceroute updates
+    socket.on(`tracert_update_${tracertType}`, function(data) {
+        const logLine = document.createElement('div');
+        logLine.className = 'log-line';
+        
+        const timestamp = formatTimestamp(data.timestamp);
+        let content = data.data;
+        let lineClass = '';
+        
+        // Parse traceroute results
+        if (content.includes('Traceroute started')) {
+            traceStartTime = Date.now();
+            totalTraces++;
+            currentHops = 0;
+            hopTimes = [];
+            lineClass = 'warning';
+        } else if (content.match(/^\s*\d+\s+/)) {
+            // This is a hop line
+            currentHops++;
+            
+            // Extract hop time
+            const timeMatch = content.match(/(\d+)\s*ms/);
+            if (timeMatch) {
+                hopTimes.push(parseInt(timeMatch[1]));
+            }
+            
+            if (content.includes('*')) {
+                lineClass = 'error';
+            } else {
+                lineClass = 'success';
+            }
+        } else if (content.includes('complete') || content.includes('reached')) {
+            lineClass = 'success';
+            updateTraceStats();
+        }
+        
+        logLine.innerHTML = `${timestamp} ${content}`;
+        if (lineClass) logLine.classList.add(lineClass);
+        
+        logContainer.appendChild(logLine);
+        autoScroll(logContainer);
+        
+        // Update last trace time
+        document.getElementById('last-trace').textContent = new Date().toLocaleTimeString();
+    });
+    
+    function updateTraceStats() {
+        document.getElementById('hop-count').textContent = currentHops;
+        document.getElementById('total-traces').textContent = totalTraces;
+        
+        if (traceStartTime) {
+            const duration = ((Date.now() - traceStartTime) / 1000).toFixed(1);
+            document.getElementById('trace-time').textContent = `${duration}s`;
+        }
+        
+        if (hopTimes.length > 0) {
+            const avgTime = (hopTimes.reduce((a, b) => a + b, 0) / hopTimes.length).toFixed(1);
+            document.getElementById('avg-hop-time').textContent = `${avgTime}ms`;
+        }
+    }
+    
+    // Load recent logs on page load
+    fetch(`/api/logs/${tracertType}_tracert`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.lines && data.lines.length > 0) {
+                logContainer.innerHTML = '';
+                data.lines.slice(-30).forEach(line => {
+                    const logLine = document.createElement('div');
+                    logLine.className = 'log-line';
+                    logLine.innerHTML = line;
+                    
+                    if (line.includes('Traceroute started')) {
+                        logLine.classList.add('warning');
+                    } else if (line.match(/^\s*\d+\s+/) && !line.includes('*')) {
+                        logLine.classList.add('success');
+                    } else if (line.includes('*')) {
+                        logLine.classList.add('error');
+                    }
+                    
+                    logContainer.appendChild(logLine);
+                });
+                autoScroll(logContainer);
+            }
+        })
+        .catch(error => console.error('Error loading logs:', error));
+</script>
+{% endblock %}

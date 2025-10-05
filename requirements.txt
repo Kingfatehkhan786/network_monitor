@@ -1,0 +1,7 @@
+# This dependency is required for running the dashboard UI on Windows.
+windows-curses; sys_platform == "win32"
+Flask==3.0.0
+flask-socketio==5.3.6
+python-socketio==5.10.0
+eventlet==0.35.2
+gunicorn==21.2.0

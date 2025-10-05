@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Device Discovery Monitor{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>📱 Network Device Discovery</h1>
+    <p><strong>Scan Method:</strong> ARP Table Analysis</p>
+    <p><strong>Scan Interval:</strong> 15 seconds</p>
+    <p><strong>Status:</strong> <span class="status-indicator status-online"></span> <span id="scan-status">Scanning...</span></p>
+    <p><strong>Last Scan:</strong> <span id="last-scan">--</span></p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="total-devices">0</div>
+        <div class="stat-label">Total Devices</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="new-devices">0</div>
+        <div class="stat-label">New Devices</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="scan-count">0</div>
+        <div class="stat-label">Total Scans</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="uptime-devices">--</div>
+        <div class="stat-label">Monitor Uptime</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🌐 Discovered Network Devices</h2>
+    <div id="devices-table">
+        <div class="log-line">Scanning for network devices...</div>
+        <div class="log-line">Waiting for ARP data...</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📊 Device Activity Log</h2>
+    <div class="log-container" id="device-log">
+        <div class="log-line">Device discovery log will appear here...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .device-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+    }
+    
+    .device-table th,
+    .device-table td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .device-table th {
+        background: rgba(255, 255, 255, 0.1);
+        font-weight: bold;
+    }
+    
+    .device-new {
+        background: rgba(76, 175, 80, 0.2);
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { background: rgba(76, 175, 80, 0.2); }
+        50% { background: rgba(76, 175, 80, 0.4); }
+        100% { background: rgba(76, 175, 80, 0.2); }
+    }
+    
+    .device-ip {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+    }
+    
+    .device-mac {
+        font-family: 'Courier New', monospace;
+        color: #64b5f6;
+    }
+    
+    .device-badge {
+        background: rgba(255, 193, 7, 0.8);
+        color: #000;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const devicesContainer = document.getElementById('devices-table');
+    const logContainer = document.getElementById('device-log');
+    
+    let scanCount = 0;
+    let deviceStartTime = Date.now();
+    
+    // Listen for device updates
+    socket.on('devices_update', function(data) {
+        scanCount++;
+        document.getElementById('scan-count').textContent = scanCount;
+        document.getElementById('total-devices').textContent = data.total_count;
+        document.getElementById('new-devices').textContent = data.new_devices;
+        document.getElementById('last-scan').textContent = data.timestamp;
+        
+        // Create device table
+        if (data.devices && data.devices.length > 0) {
+            let tableHtml = `
+                <table class="device-table">
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>MAC Address</th>
+                            <th>Status</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            data.devices.forEach(device => {
+                const rowClass = device.is_new ? 'device-new' : '';
+                const statusBadge = device.is_new ? '<span class="device-badge">NEW</span>' : 'Known';
+                
+                tableHtml += `
+                    <tr class="${rowClass}">
+                        <td class="device-ip">${device.ip}</td>
+                        <td class="device-mac">${device.mac}</td>
+                        <td>${statusBadge}</td>
+                        <td>${device.timestamp}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHtml += '</tbody></table>';
+            devicesContainer.innerHTML = tableHtml;
+        }
+        
+        // Add to activity log if there are new devices
+        if (data.new_devices > 0) {
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line success';
+            logLine.innerHTML = `${formatTimestamp(data.timestamp)} 🆕 ${data.new_devices} new device(s) discovered`;
+            logContainer.appendChild(logLine);
+            autoScroll(logContainer);
+        }
+    });
+    
+    // Device monitor uptime
+    function updateDeviceUptime() {
+        const uptime = Math.floor((Date.now() - deviceStartTime) / 1000);
+        const hours = Math.floor(uptime / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+        document.getElementById('uptime-devices').textContent = `${hours}h ${minutes}m`;
+    }
+    
+    setInterval(updateDeviceUptime, 60000); // Update every minute
+    updateDeviceUptime();
+    
+    // Load recent device logs
+    fetch('/api/logs/devices')
+        .then(response => response.json())
+        .then(data => {
+            if (data.lines && data.lines.length > 0) {
+                logContainer.innerHTML = '';
+                data.lines.slice(-20).forEach(line => {
+                    const logLine = document.createElement('div');
+                    logLine.className = 'log-line';
+                    
+                    if (line.includes('NEW DEVICES')) {
+                        logLine.classList.add('success');
+                    } else if (line.includes('failed')) {
+                        logLine.classList.add('error');
+                    }
+                    
+                    logLine.innerHTML = line;
+                    logContainer.appendChild(logLine);
+                });
+                autoScroll(logContainer);
+            }
+        })
+        .catch(error => console.error('Error loading device logs:', error));
+</script>
+{% endblock %}
