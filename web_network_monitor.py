@@ -18,6 +18,40 @@ try:
     SPEEDTEST_AVAILABLE = True
 except ImportError:
     SPEEDTEST_AVAILABLE = False
+
+# OS Detection and Enhanced Commands
+CURRENT_OS = platform.system().lower()
+IS_LINUX = CURRENT_OS == "linux"
+IS_WINDOWS = CURRENT_OS == "windows"  
+IS_MACOS = CURRENT_OS == "darwin"
+IS_CONTAINER = os.path.exists('/.dockerenv')
+
+print(f"🖥️ Running on: {platform.system()}")
+if IS_CONTAINER:
+    print("🐳 Container environment detected")
+
+def get_os_ping_cmd(host, count=None):
+    """Get OS-appropriate ping command"""
+    if IS_WINDOWS:
+        return ["ping", "-t", host] if count is None else ["ping", "-n", str(count), host]
+    elif IS_LINUX:
+        if count is None:
+            return ["ping", "-i", "1", "-W", "3", host]  # Continuous  
+        else:
+            return ["ping", "-c", str(count), "-i", "0.5", "-W", "2", host]  # Finite
+    else:  # macOS
+        if count is None:
+            return ["ping", "-i", "1", host]
+        else:
+            return ["ping", "-c", str(count), host]
+
+def get_os_traceroute_cmd(host):
+    """Get OS-appropriate traceroute command"""
+    if IS_WINDOWS:
+        return ["tracert", "-d", host]
+    else:  # Linux/macOS
+        return ["traceroute", "-n", "-w", "2", "-q", "2", "-m", "20", host]
+
     print("Speedtest module not available")
 
 # Enhanced speed test providers removed - keeping it simple
@@ -464,9 +498,9 @@ def ping_monitor(host, label, log_file, data_queue):
     if system_name == "windows":
         ping_cmd = ["ping", "-t", host]
     elif system_name == "darwin":  # macOS
-        ping_cmd = ["ping", "-c", "0", "-i", "1", "-W", "3", host]
+        ping_cmd = get_os_ping_cmd(host)
     else:  # Linux and others
-        ping_cmd = ["ping", "-c", "0", "-i", "1", "-W", "3", host]
+        ping_cmd = get_os_ping_cmd(host)
 
     while True:
         try:
@@ -478,7 +512,7 @@ def ping_monitor(host, label, log_file, data_queue):
                                      bufsize=1)
 
             for line in iter(process.stdout.readline, ''):
-                if line.strip() == "" or "PING " in line or "ping statistics" in line or "packets transmitted" in line:
+                if line.strip() == "" or "Pinging" in line or "64 bytes" in line:
                     continue
 
                 log_line = f"{datetime.now().strftime('%H:%M:%S')}: {line.strip()}\n"
@@ -522,9 +556,9 @@ def traceroute_monitor(host, label, log_file, data_queue):
     if system_name == "windows":
         tracert_cmd = ["tracert", "-d", host]
     elif system_name == "darwin":  # macOS
-        tracert_cmd = ["traceroute", "-n", host]
+        tracert_cmd = get_os_traceroute_cmd(host)
     else:  # Linux and others
-        tracert_cmd = ["traceroute", "-n", host]
+        tracert_cmd = get_os_traceroute_cmd(host)
     
     while True:
         # For internal traceroute, check if host is reachable first
@@ -776,7 +810,7 @@ def device_monitor():
                     'ip': ip,
                     'mac': mac,
                     'is_new': is_new,
-                    'timestamp': datetime.now().strftime('%H:%M:%S')
+                    'timestamp': datetime.now().isoformat()
                 })
             
             # Add to queue and emit

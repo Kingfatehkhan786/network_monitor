@@ -226,13 +226,14 @@ class NetworkMonitorSetup:
     def _apply_os_fixes(self):
         """Apply OS-specific fixes to the main application"""
         
-        # Read the current file
-        with open('web_network_monitor.py', 'r') as f:
+        # Read the current file with proper encoding
+        with open('web_network_monitor.py', 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
         
         # Add OS detection imports at the top
         import_addition = '''
 # OS Detection and Advanced Tools
+import os
 import platform
 CURRENT_OS = platform.system().lower()
 IS_LINUX = CURRENT_OS == "linux"
@@ -268,10 +269,12 @@ def get_os_appropriate_traceroute_cmd(host):
 
 '''
         
-        # Insert after the first import block
-        import_pos = content.find('\n', content.find('import '))
-        if import_pos != -1:
-            content = content[:import_pos] + import_addition + content[import_pos:]
+        # Only add OS detection if not already present
+        if 'IS_LINUX = CURRENT_OS' not in content:
+            # Insert after the first import block
+            import_pos = content.find('\n', content.find('import '))
+            if import_pos != -1:
+                content = content[:import_pos] + import_addition + content[import_pos:]
         
         # Fix ping command generation
         content = content.replace(
@@ -291,8 +294,8 @@ def get_os_appropriate_traceroute_cmd(host):
             "'timestamp': datetime.now().isoformat(),"
         )
         
-        # Write the modified content back
-        with open('web_network_monitor.py', 'w') as f:
+        # Write the modified content back with proper encoding
+        with open('web_network_monitor.py', 'w', encoding='utf-8') as f:
             f.write(content)
     
     def create_directories(self):
