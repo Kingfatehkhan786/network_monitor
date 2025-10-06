@@ -14,6 +14,11 @@ def run_command(cmd, description="", check=True, shell=True):
     print(f"🔄 {description}")
     print(f"   Command: {cmd}")
     
+    # If running as root, remove sudo from commands
+    if os.geteuid() == 0 and cmd.startswith('sudo '):
+        cmd = cmd[5:]  # Remove 'sudo ' prefix
+        print(f"   Modified command (root): {cmd}")
+    
     try:
         if shell:
             result = subprocess.run(cmd, shell=True, check=check, 
@@ -288,13 +293,20 @@ def setup_systemd_service():
     print("⚙️ Setting up systemd service...")
     
     current_dir = os.getcwd()
+    current_user = os.getenv('USER', 'ubuntu')
+    
+    # If running as root, use a default user
+    if os.geteuid() == 0:
+        current_user = 'ubuntu'  # Default to ubuntu user
+        print(f"   Running as root, service will use user: {current_user}")
+    
     service_content = f"""[Unit]
 Description=Network Monitor Web Application  
 After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User={current_user}
 WorkingDirectory={current_dir}
 Environment=PATH={current_dir}/venv_network_monitor/bin
 ExecStart={current_dir}/venv_network_monitor/bin/python web_network_monitor.py --port 5000
@@ -309,13 +321,23 @@ WantedBy=multi-user.target
     with open('network-monitor.service', 'w') as f:
         f.write(service_content)
     
-    # Install service (requires manual sudo)
-    print("📝 Created network-monitor.service file")
-    print("To install the service, run:")
-    print("  sudo cp network-monitor.service /etc/systemd/system/")
-    print("  sudo systemctl daemon-reload")
-    print("  sudo systemctl enable network-monitor.service")
-    print("  sudo systemctl start network-monitor.service")
+    # Try to install service automatically
+    try:
+        if run_command("sudo cp network-monitor.service /etc/systemd/system/", 
+                      "Installing systemd service"):
+            run_command("sudo systemctl daemon-reload", "Reloading systemd")
+            run_command("sudo systemctl enable network-monitor.service", 
+                       "Enabling service")
+            print("✅ Systemd service installed and enabled")
+            print("   Start with: sudo systemctl start network-monitor")
+        else:
+            print("📝 Created network-monitor.service file")
+            print("   Manual installation needed:")
+            print("   sudo cp network-monitor.service /etc/systemd/system/")
+            print("   sudo systemctl daemon-reload")
+            print("   sudo systemctl enable network-monitor.service")
+    except Exception as e:
+        print(f"⚠️ Service installation failed: {e}")
     
     return True
 
@@ -371,11 +393,14 @@ def main():
         print("❌ This setup is designed for Ubuntu Linux")
         return False
     
-    # Check if running as non-root user
-    if os.geteuid() == 0:
-        print("⚠️  Please run this script as a regular user (not root)")
-        print("   sudo commands will be used when needed")
-        return False
+    # Check user permissions and provide guidance
+    is_root = os.geteuid() == 0
+    if is_root:
+        print("⚠️  Running as root user")
+        print("   Script will proceed but some steps may need adjustment")
+    else:
+        print(f"✅ Running as user: {os.getenv('USER', 'unknown')}")
+        print("   Will use sudo for system packages as needed")
     
     steps = [
         ("Installing Python 3.13", setup_python313_ubuntu),

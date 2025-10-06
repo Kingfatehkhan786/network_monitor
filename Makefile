@@ -29,6 +29,11 @@ setup-ubuntu:
 	@echo "===================================="
 	@python3 ubuntu_python313_setup.py
 
+# Test Ubuntu setup script
+test-ubuntu:
+	@echo "🧪 Testing Ubuntu setup script..."
+	@python3 test_ubuntu_setup.py
+
 # Basic setup for all systems
 setup:
 	@python3 setup_and_run_fixed.py --setup-only
