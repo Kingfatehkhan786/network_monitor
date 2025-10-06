@@ -559,8 +559,18 @@ def ping_monitor(host, label, log_file, data_queue):
                 elif "internal" in label.lower():
                     event_name = 'ping_update_internal'
                 
-                print(f"📡 Emitting: {event_name}")
+                print(f"📡 Emitting: {event_name} with data: {log_entry['data'][:50]}...")
+                
+                # Emit to all connected clients
                 socketio.emit(event_name, log_entry)
+                
+                # Also emit a generic event for debugging
+                socketio.emit('debug_ping_event', {
+                    'event_name': event_name,
+                    'host': host,
+                    'provider': provider if "external" in label.lower() else 'internal',
+                    'data': log_entry
+                })
                 
                 # Sleep between pings (OS appropriate)
                 if IS_LINUX:

@@ -232,6 +232,43 @@
         }
     }
 
+    
+        // Debug event listener to see what we're actually receiving
+        socket.on('debug_ping_event', function(data) {
+            console.log('🔍 Debug ping event:', data);
+            console.log(`Event: ${data.event_name}, Provider: ${data.provider}`);
+        });
+        
+        // Listen for connection events
+        socket.on('connect', function() {
+            console.log('✅ Socket connected');
+            const debugDiv = document.createElement('div');
+            debugDiv.innerHTML = '<small style="color: #4CAF50;">[Connected to server]</small>';
+            document.querySelectorAll('.log-container').forEach(container => {
+                container.appendChild(debugDiv.cloneNode(true));
+            });
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('❌ Socket disconnected');
+            const debugDiv = document.createElement('div');
+            debugDiv.innerHTML = '<small style="color: #e74c3c;">[Disconnected from server]</small>';
+            document.querySelectorAll('.log-container').forEach(container => {
+                container.appendChild(debugDiv.cloneNode(true));
+            });
+        });
+        
+        // Test: Listen for ALL events (for debugging)
+        const originalOn = socket.on;
+        socket.on = function(event, callback) {
+            return originalOn.call(this, event, function(data) {
+                if (event.includes('ping')) {
+                    console.log(`🎯 Received event: ${event}`, data);
+                }
+                return callback(data);
+            });
+        };
+        
     hosts.forEach(host => {
         const logContainer = document.getElementById(`log-${host.name}`);
         const statusDot = document.getElementById(`status-dot-${host.name}`);
@@ -242,13 +279,24 @@
         let latencies = [];
         let hopCount = 0;
 
-        // Listen for real-time updates for each host
+        // Listen for real-time updates for each host - HARDCODED FOR DEBUGGING
         let eventName;
         if (monitorType === 'traceroute') {
-            eventName = `traceroute_update_external_${host.name.toLowerCase()}`;
+            eventName = `traceroute_update_internal`;  // Only internal traceroute
         } else {
-            eventName = `ping_update_external_${host.name.toLowerCase()}`;
+            // Hardcode the event names to match backend exactly
+            if (host.name === 'Cloudflare') {
+                eventName = 'ping_update_external_cloudflare';
+            } else if (host.name === 'Google') {
+                eventName = 'ping_update_external_google';
+            } else if (host.name === 'Quad9') {
+                eventName = 'ping_update_external_quad9';
+            } else {
+                eventName = 'ping_update_internal';
+            }
         }
+        
+        console.log(`👂 Listening for event: ${eventName} for host: ${host.name}`);
         
         socket.on(eventName, function(data) {
             const logLine = document.createElement('div');
