@@ -26,9 +26,10 @@ help:
 
 # Install system dependencies
 install:
-	@echo "📦 Installing system dependencies (Python, pip, net-tools)..."
+	@echo "📦 Installing comprehensive system dependencies..."
 	sudo apt-get update
-	sudo apt-get install -y python3 python3-pip python3-venv net-tools iputils-ping traceroute
+	@# Install full Python, networking tools, and text editors
+	sudo apt-get install -y python3-full python3-pip python3-venv net-tools iputils-ping traceroute nmap telnet nano vim curl wget
 	@echo "✅ System dependencies installed."
 
 # Create virtual environment
