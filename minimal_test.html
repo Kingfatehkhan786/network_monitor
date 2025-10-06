@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal SocketIO Test</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+<body style="background: #000; color: #0f0; font-family: monospace; padding: 20px;">
+    <h1>🔬 MINIMAL SOCKETIO TEST</h1>
+    <div id="status">CONNECTING...</div>
+    <div id="output"></div>
+    <button onclick="sendTest()">SEND TEST</button>
+    
+    <script>
+        const socket = io();
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        
+        function log(msg) {
+            output.innerHTML += '<br>' + new Date().toLocaleTimeString() + ': ' + msg;
+            console.log(msg);
+        }
+        
+        socket.on('connect', function() {
+            status.innerHTML = '✅ CONNECTED';
+            status.style.color = '#0f0';
+            log('✅ SocketIO CONNECTED');
+        });
+        
+        socket.on('disconnect', function() {
+            status.innerHTML = '❌ DISCONNECTED';  
+            status.style.color = '#f00';
+            log('❌ SocketIO DISCONNECTED');
+        });
+        
+        // Listen for test events
+        socket.on('test_response', function(data) {
+            log('📨 RECEIVED TEST_RESPONSE: ' + JSON.stringify(data));
+        });
+        
+        socket.on('simple_ping', function(data) {
+            log('📡 RECEIVED SIMPLE_PING: ' + JSON.stringify(data));
+        });
+        
+        function sendTest() {
+            socket.emit('test_request', {message: 'Hello from client'});
+            log('📤 SENT test_request');
+        }
+        
+        // Listen for ANY event (debugging)
+        const originalOn = socket.on;
+        socket.on = function(event, callback) {
+            return originalOn.call(this, event, function(data) {
+                log('🎯 ANY EVENT: ' + event);
+                return callback(data);
+            });
+        };
+        
+        log('🚀 JavaScript loaded');
+    </script>
+</body>
+</html>

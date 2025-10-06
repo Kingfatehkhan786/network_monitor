@@ -19,6 +19,43 @@ try:
 except ImportError:
     SPEEDTEST_AVAILABLE = False
 
+# Live ping data storage (bypassing SocketIO)
+LIVE_PING_DATA = {
+    'cloudflare': [],
+    'google': [],
+    'quad9': [],
+    'internal': []
+}
+PING_COUNTERS = {
+    'cloudflare': 0,
+    'google': 0, 
+    'quad9': 0,
+    'internal': 0
+}
+
+def add_live_ping_data(provider, data_line):
+    """Add ping data to live storage"""
+    global LIVE_PING_DATA, PING_COUNTERS
+    
+    PING_COUNTERS[provider] += 1
+    current_time = datetime.now()
+    
+    entry = {
+        'timestamp': current_time.strftime('%H:%M:%S'),
+        'data': data_line,
+        'counter': PING_COUNTERS[provider],
+        'full_timestamp': current_time.isoformat()
+    }
+    
+    # Keep only last 50 entries
+    LIVE_PING_DATA[provider].append(entry)
+    if len(LIVE_PING_DATA[provider]) > 50:
+        LIVE_PING_DATA[provider].pop(0)
+    
+    print(f"📝 Added live data for {provider}: {data_line[:50]}...")
+
+
+
 # OS Detection and Enhanced Commands
 CURRENT_OS = platform.system().lower()
 IS_LINUX = CURRENT_OS == "linux"
@@ -492,12 +529,26 @@ def add_to_queue(queue_obj, data, max_size=100):
 
 # --- Monitoring Functions ---
 def ping_monitor(host, label, log_file, data_queue):
-    """Fixed ping monitor with proper OS detection"""
-    print(f"🔍 Starting ping monitor for {label} ({host})")
+    """AJAX-compatible ping monitor"""
+    print(f"🎯 AJAX ping monitor starting for {label} ({host})")
     
-    # Use OS-appropriate ping command
-    ping_cmd = get_os_ping_cmd(host)
-    print(f"📡 Ping command: {' '.join(ping_cmd)}")
+    # Determine provider name for data storage
+    if "1.1.1.1" in host:
+        provider = "cloudflare"
+    elif "8.8.8.8" in host:
+        provider = "google"
+    elif "9.9.9.9" in host:
+        provider = "quad9"
+    else:
+        provider = "internal"
+    
+    print(f"🗄️ Storing data as: {provider}")
+    
+    # Simple ping command
+    if IS_WINDOWS:
+        ping_cmd = ["ping", "-t", host]
+    else:
+        ping_cmd = ["ping", host]
     
     while True:
         try:
@@ -515,84 +566,24 @@ def ping_monitor(host, label, log_file, data_queue):
                 if not line:
                     continue
                 
-                # OS-specific filtering
-                skip_patterns = []
-                if IS_WINDOWS:
-                    skip_patterns = ["Pinging", "Ping statistics", "Packets:"]
-                elif IS_LINUX:
-                    skip_patterns = ["PING ", "ping statistics", "packets transmitted", "---"]
-                else:  # macOS
-                    skip_patterns = ["PING ", "---"]
+                # Store ALL ping output in AJAX system
+                add_live_ping_data(provider, line)
                 
-                # Skip unwanted lines
-                if any(pattern in line for pattern in skip_patterns):
-                    continue
-                
-                # Log the ping result
+                # Also write to log file
                 current_time = datetime.now()
                 log_line = f"[{current_time.strftime('%H:%M:%S')}] {line}\n"
                 append_to_log(log_file, log_line)
                 
-                # Create log entry with proper timestamp
-                log_entry = {
-                    'timestamp': current_time.isoformat(),  # ISO format for JavaScript
-                    'display_time': current_time.strftime('%H:%M:%S'),
-                    'data': line,
-                    'type': 'ping',
-                    'host': host,
-                    'label': label
-                }
-                add_to_queue(data_queue, log_entry)
-                
-                # Emit SocketIO event with correct naming
-                event_name = f'ping_update_{label.lower()}'
-                
-                if "external" in label.lower():
-                    # Map IPs to provider names for external monitoring
-                    provider_map = {
-                        '1.1.1.1': 'cloudflare',
-                        '8.8.8.8': 'google', 
-                        '9.9.9.9': 'quad9'
-                    }
-                    provider = provider_map.get(host, 'unknown')
-                    event_name = f'ping_update_external_{provider}'
-                elif "internal" in label.lower():
-                    event_name = 'ping_update_internal'
-                
-                print(f"📡 Emitting: {event_name} with data: {log_entry['data'][:50]}...")
-                
-                # Emit to all connected clients
-                socketio.emit(event_name, log_entry)
-                
-                # Also emit a generic event for debugging
-                socketio.emit('debug_ping_event', {
-                    'event_name': event_name,
-                    'host': host,
-                    'provider': provider if "external" in label.lower() else 'internal',
-                    'data': log_entry
-                })
-                
-                # Sleep between pings (OS appropriate)
-                if IS_LINUX:
-                    time.sleep(1)  # Linux ping has built-in interval
-                else:
-                    time.sleep(2)  # Windows/macOS need manual sleep
+                # Small delay to prevent overwhelming
+                time.sleep(1)
 
             process.stdout.close()
             process.wait()
             
         except Exception as e:
-            print(f"❌ Ping monitor error for {label}: {e}")
-            # Send error to UI
-            error_entry = {
-                'timestamp': datetime.now().isoformat(),
-                'display_time': datetime.now().strftime('%H:%M:%S'),
-                'data': f"Ping error: {str(e)}",
-                'type': 'error',
-                'host': host,
-                'label': label
-            }
-            add_to_queue(data_queue, error_entry)
+            print(f"❌ AJAX ping error for {label}: {e}")
+            error_msg = f"Ping error: {str(e)}"
+            add_live_ping_data(provider, error_msg)
             time.sleep(5)
 
 def traceroute_monitor(host, label, log_file, data_queue):
@@ -1496,6 +1487,18 @@ def api_test_ping(host):
 
 
 
+
+
+@app.route('/emergency')
+def emergency_test():
+    """Emergency ping test page"""
+    return send_file('emergency_test.html')
+
+@app.route('/socketio-test')
+def socketio_test_page():
+    """Serve the SocketIO test page"""
+    return send_file('socketio_test.html')
+
 @app.route('/debug')
 def debug_dashboard():
     """Debug dashboard to troubleshoot monitoring issues"""
@@ -1510,6 +1513,7 @@ def api_restart_monitoring():
         # Start monitoring threads again
         if 'start_monitoring_threads' in globals():
             start_monitoring_threads()
+            emit_test_pings()
             return jsonify({
                 'message': 'Monitoring threads restarted',
                 'timestamp': datetime.now().isoformat()
@@ -1524,6 +1528,220 @@ def api_restart_monitoring():
         return jsonify({'error': str(e)}), 500
 
 
+
+@app.route('/test-socketio')
+def test_socketio():
+    """Test SocketIO by sending fake ping events"""
+    import time
+    from datetime import datetime
+    
+    # Send test events for each provider
+    providers = ['cloudflare', 'google', 'quad9']
+    
+    for provider in providers:
+        fake_ping_data = {
+            'timestamp': datetime.now().isoformat(),
+            'display_time': datetime.now().strftime('%H:%M:%S'),
+            'data': f'Reply from {provider} server: bytes=32 time=15ms TTL=57',
+            'type': 'ping',
+            'host': '1.1.1.1' if provider == 'cloudflare' else ('8.8.8.8' if provider == 'google' else '9.9.9.9'),
+            'label': f'EXTERNAL_{provider.upper()}'
+        }
+        
+        event_name = f'ping_update_external_{provider}'
+        print(f"🧪 Test emitting: {event_name}")
+        socketio.emit(event_name, fake_ping_data)
+        
+        # Also emit debug event
+        socketio.emit('debug_ping_event', {
+            'event_name': event_name,
+            'host': fake_ping_data['host'],
+            'provider': provider,
+            'data': fake_ping_data
+        })
+    
+    return jsonify({
+        'message': 'Test SocketIO events sent',
+        'events_sent': [f'ping_update_external_{p}' for p in providers],
+        'timestamp': datetime.now().isoformat()
+    })
+
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    print(f"🔗 Client connected: {request.sid}")
+    socketio.emit('connection_test', {
+        'message': 'You are connected!',
+        'timestamp': datetime.now().isoformat()
+    })
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    print(f"❌ Client disconnected: {request.sid}")
+
+
+
+@app.route('/minimal')
+def minimal_test():
+    """Minimal SocketIO test page"""
+    return send_file('minimal_test.html')
+
+@app.route('/force-emit')
+def force_emit():
+    """Force emit a test event"""
+    print("🔥 FORCE EMITTING TEST EVENT")
+    socketio.emit('simple_ping', {
+        'message': 'FORCED TEST EVENT',
+        'timestamp': datetime.now().isoformat(),
+        'test': True
+    })
+    return jsonify({'message': 'Event emitted'})
+
+@socketio.on('test_request')
+def handle_test_request(data):
+    """Handle test request from client"""
+    print(f"📥 RECEIVED test_request: {data}")
+    socketio.emit('test_response', {
+        'message': 'Server received your message',
+        'original': data,
+        'timestamp': datetime.now().isoformat()
+    })
+    print("📤 SENT test_response")
+
+# Simplified ping emitter for testing
+def emit_test_pings():
+    """Emit simple test pings every 5 seconds"""
+    import threading
+    import time
+    
+    def ping_loop():
+        counter = 0
+        while True:
+            try:
+                counter += 1
+                test_data = {
+                    'message': f'Test ping #{counter}',
+                    'timestamp': datetime.now().isoformat(),
+                    'counter': counter
+                }
+                
+                print(f"🧪 EMITTING simple_ping #{counter}")
+                socketio.emit('simple_ping', test_data)
+                
+                # Also emit the external ping events
+                socketio.emit('ping_update_external_cloudflare', test_data)
+                socketio.emit('ping_update_external_google', test_data)
+                socketio.emit('ping_update_external_quad9', test_data)
+                
+                time.sleep(5)
+            except Exception as e:
+                print(f"❌ Test ping error: {e}")
+                time.sleep(5)
+    
+    thread = threading.Thread(target=ping_loop, daemon=True)
+    thread.start()
+
+    # Internal ping monitor (optional)
+    try:
+        # Detect internal gateway/router
+        import psutil
+        gateways = psutil.net_if_addrs()
+        internal_target = "10.99.100.1"  # Default
+        
+        # Try to detect actual gateway
+        try:
+            import subprocess
+            if platform.system().lower() == 'windows':
+                result = subprocess.run(['route', 'print', '0.0.0.0'], capture_output=True, text=True)
+                # Parse route output to find gateway
+                for line in result.stdout.split('\n'):
+                    if '0.0.0.0' in line and 'Gateway' not in line:
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            internal_target = parts[2]
+                            break
+            else:
+                result = subprocess.run(['ip', 'route', 'show', 'default'], capture_output=True, text=True)
+                if 'via' in result.stdout:
+                    internal_target = result.stdout.split('via')[1].split()[0]
+        except:
+            pass
+        
+        print(f"🏠 Starting internal ping monitor for: {internal_target}")
+        internal_log = os.path.join(LOG_FOLDER, 'ping_internal.log')
+        internal_thread = threading.Thread(
+            target=ping_monitor,
+            args=(internal_target, "INTERNAL", internal_log, ping_queue),
+            daemon=True
+        )
+        internal_thread.start()
+        
+    except Exception as e:
+        print(f"⚠️ Could not start internal ping monitor: {e}")
+    
+    print("🧪 Started test ping emitter")
+
+
+
+@app.route('/api/live-ping/<provider>')
+def api_live_ping(provider):
+    """Get live ping data for a provider"""
+    global LIVE_PING_DATA, PING_COUNTERS
+    
+    if provider not in LIVE_PING_DATA:
+        return jsonify({'error': 'Provider not found'}), 404
+    
+    return jsonify({
+        'provider': provider,
+        'data': LIVE_PING_DATA[provider],
+        'counter': PING_COUNTERS[provider],
+        'last_update': datetime.now().isoformat(),
+        'total_entries': len(LIVE_PING_DATA[provider])
+    })
+
+@app.route('/api/ping-stats-live')
+def api_ping_stats_live():
+    """Get live ping statistics for all providers"""
+    global PING_COUNTERS
+    
+    # Calculate basic stats (you can enhance this)
+    stats = {}
+    for provider, count in PING_COUNTERS.items():
+        recent_data = LIVE_PING_DATA[provider][-10:] if LIVE_PING_DATA[provider] else []
+        
+        # Extract latency from recent pings
+        latencies = []
+        success_count = 0
+        for entry in recent_data:
+            if 'time=' in entry['data']:
+                try:
+                    # Extract time=XXms
+                    time_match = entry['data'].split('time=')[1].split('ms')[0]
+                    latencies.append(float(time_match))
+                    success_count += 1
+                except:
+                    pass
+        
+        avg_latency = sum(latencies) / len(latencies) if latencies else 0
+        
+        stats[provider] = {
+            'packets_sent': count,
+            'packets_received': success_count if recent_data else 0,
+            'packet_loss': ((count - success_count) / count * 100) if count > 0 else 0,
+            'avg_latency': round(avg_latency, 2),
+            'last_ping': recent_data[-1]['timestamp'] if recent_data else 'Never'
+        }
+    
+    return jsonify(stats)
+
+
+
+@app.route('/ajax-live')  
+def ajax_live():
+    """AJAX Live Ping Monitor"""
+    return send_file('ajax_live.html')
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Network Monitor')
@@ -1536,6 +1754,7 @@ if __name__ == '__main__':
     print(f"Memory Management: Garbage collection runs every {GC_INTERVAL//60} minutes.")
     
     start_monitoring_threads()
+    emit_test_pings()
     
     # Run the Flask-SocketIO application
     print(f"🚀 Starting server on http://0.0.0.0:{args.port}")

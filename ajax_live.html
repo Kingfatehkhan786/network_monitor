@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AJAX Live Ping Monitor</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #2c3e50; color: white; padding: 20px; }
+        .provider { background: #34495e; margin: 20px 0; padding: 20px; border-radius: 10px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 15px 0; }
+        .stat-card { background: #3498db; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 24px; font-weight: bold; }
+        .stat-label { font-size: 14px; margin-top: 5px; }
+        .logs { background: #1a1a1a; padding: 15px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+        .log-entry { margin: 2px 0; padding: 2px; }
+        .log-entry:hover { background: rgba(255,255,255,0.1); }
+        .status { padding: 10px; border-radius: 5px; margin: 10px 0; }
+        .online { background: #27ae60; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .refresh-btn { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔄 AJAX Live Ping Monitor (No SocketIO)</h1>
+    
+    <div class="status online" id="status">✅ AJAX Polling Active - Updates every 2 seconds</div>
+    
+    <div class="provider">
+        <div class="header">
+            <h2>☁️ Cloudflare (1.1.1.1)</h2>
+            <button class="refresh-btn" onclick="refreshProvider('cloudflare')">🔄 Refresh</button>
+        </div>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="cloudflare-sent">0</div>
+                <div class="stat-label">Packets Sent</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="cloudflare-received">0</div>
+                <div class="stat-label">Packets Received</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="cloudflare-loss">0%</div>
+                <div class="stat-label">Packet Loss</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="cloudflare-latency">--</div>
+                <div class="stat-label">Avg Latency</div>
+            </div>
+        </div>
+        <div class="logs" id="cloudflare-logs">Loading live logs...</div>
+    </div>
+
+    <div class="provider">
+        <div class="header">
+            <h2>🌐 Google (8.8.8.8)</h2>
+            <button class="refresh-btn" onclick="refreshProvider('google')">🔄 Refresh</button>
+        </div>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="google-sent">0</div>
+                <div class="stat-label">Packets Sent</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="google-received">0</div>
+                <div class="stat-label">Packets Received</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="google-loss">0%</div>
+                <div class="stat-label">Packet Loss</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="google-latency">--</div>
+                <div class="stat-label">Avg Latency</div>
+            </div>
+        </div>
+        <div class="logs" id="google-logs">Loading live logs...</div>
+    </div>
+
+    <div class="provider">
+        <div class="header">
+            <h2>🛡️ Quad9 (9.9.9.9)</h2>
+            <button class="refresh-btn" onclick="refreshProvider('quad9')">🔄 Refresh</button>
+        </div>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="quad9-sent">0</div>
+                <div class="stat-label">Packets Sent</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="quad9-received">0</div>
+                <div class="stat-label">Packets Received</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="quad9-loss">0%</div>
+                <div class="stat-label">Packet Loss</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="quad9-latency">--</div>
+                <div class="stat-label">Avg Latency</div>
+            </div>
+        </div>
+        <div class="logs" id="quad9-logs">Loading live logs...</div>
+    </div>
+
+    <script>
+        const providers = ['cloudflare', 'google', 'quad9'];
+        
+        function updateLiveLogs(provider) {
+            fetch(`/api/live-ping/${provider}`)
+                .then(response => response.json())
+                .then(data => {
+                    const logsDiv = document.getElementById(`${provider}-logs`);
+                    logsDiv.innerHTML = '';
+                    
+                    if (data.data && data.data.length > 0) {
+                        data.data.forEach(entry => {
+                            const logEntry = document.createElement('div');
+                            logEntry.className = 'log-entry';
+                            logEntry.innerHTML = `[${entry.timestamp}] ${entry.data}`;
+                            logsDiv.appendChild(logEntry);
+                        });
+                        logsDiv.scrollTop = logsDiv.scrollHeight;
+                    } else {
+                        logsDiv.innerHTML = 'No ping data yet...';
+                    }
+                })
+                .catch(error => {
+                    console.error(`Error loading ${provider}:`, error);
+                    document.getElementById(`${provider}-logs`).innerHTML = `Error: ${error}`;
+                });
+        }
+        
+        function updateStats() {
+            fetch('/api/ping-stats-live')
+                .then(response => response.json())
+                .then(stats => {
+                    providers.forEach(provider => {
+                        if (stats[provider]) {
+                            const stat = stats[provider];
+                            document.getElementById(`${provider}-sent`).textContent = stat.packets_sent;
+                            document.getElementById(`${provider}-received`).textContent = stat.packets_received;
+                            document.getElementById(`${provider}-loss`).textContent = `${stat.packet_loss.toFixed(1)}%`;
+                            document.getElementById(`${provider}-latency`).textContent = stat.avg_latency > 0 ? `${stat.avg_latency}ms` : '--';
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading stats:', error);
+                });
+        }
+        
+        function refreshProvider(provider) {
+            updateLiveLogs(provider);
+            updateStats();
+        }
+        
+        function refreshAll() {
+            providers.forEach(updateLiveLogs);
+            updateStats();
+        }
+        
+        // Auto-refresh every 2 seconds
+        setInterval(refreshAll, 2000);
+        
+        // Initial load
+        refreshAll();
+        
+        console.log('🔄 AJAX Live Monitor started - refreshing every 2 seconds');
+    </script>
+</body>
+</html>

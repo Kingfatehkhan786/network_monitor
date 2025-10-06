@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Emergency Ping Test</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #1a1a2e; color: white; padding: 20px; }
+        .provider { background: #16213e; margin: 20px 0; padding: 20px; border-radius: 10px; }
+        .logs { background: #0f3460; padding: 15px; height: 300px; overflow-y: auto; font-family: monospace; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .online { background: #27ae60; }
+        .error { background: #e74c3c; }
+        .info { background: #3498db; }
+    </style>
+</head>
+<body>
+    <h1>🚨 Emergency Ping Monitor Test</h1>
+    
+    <div class="status" id="connection-status">Connecting...</div>
+    
+    <div class="provider">
+        <h2>☁️ Cloudflare (1.1.1.1)</h2>
+        <div class="logs" id="cloudflare-logs">Waiting for ping data...</div>
+    </div>
+    
+    <div class="provider">
+        <h2>🌐 Google (8.8.8.8)</h2>
+        <div class="logs" id="google-logs">Waiting for ping data...</div>
+    </div>
+    
+    <div class="provider">
+        <h2>🛡️ Quad9 (9.9.9.9)</h2>
+        <div class="logs" id="quad9-logs">Waiting for ping data...</div>
+    </div>
+
+    <script>
+        const socket = io();
+        
+        function addLog(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logEntry.style.color = type === 'error' ? '#e74c3c' : '#2ecc71';
+            container.appendChild(logEntry);
+            container.scrollTop = container.scrollHeight;
+            
+            // Keep only last 50 entries
+            while (container.children.length > 50) {
+                container.removeChild(container.firstChild);
+            }
+        }
+        
+        // Connection status
+        socket.on('connect', function() {
+            document.getElementById('connection-status').innerHTML = '✅ Connected to server';
+            document.getElementById('connection-status').className = 'status online';
+            console.log('✅ SocketIO connected');
+        });
+        
+        socket.on('disconnect', function() {
+            document.getElementById('connection-status').innerHTML = '❌ Disconnected';
+            document.getElementById('connection-status').className = 'status error';
+            console.log('❌ SocketIO disconnected');
+        });
+        
+        // Listen for ping events - EXACT event names
+        socket.on('ping_update_external_cloudflare', function(data) {
+            console.log('📡 Cloudflare event received:', data);
+            addLog('cloudflare-logs', `${data.data} (${data.counter})`);
+        });
+        
+        socket.on('ping_update_external_google', function(data) {
+            console.log('📡 Google event received:', data);
+            addLog('google-logs', `${data.data} (${data.counter})`);
+        });
+        
+        socket.on('ping_update_external_quad9', function(data) {
+            console.log('📡 Quad9 event received:', data);  
+            addLog('quad9-logs', `${data.data} (${data.counter})`);
+        });
+        
+        // Test event listener
+        socket.on('live_ping_test', function(data) {
+            console.log('🧪 Test event received:', data);
+            addLog('cloudflare-logs', `TEST: ${data.message}`, 'info');
+        });
+        
+        // Log ALL events for debugging
+        const originalOn = socket.on;
+        socket.on = function(event, callback) {
+            return originalOn.call(this, event, function(data) {
+                if (event.includes('ping') || event === 'live_ping_test') {
+                    console.log(`🔍 Event received: ${event}`, data);
+                }
+                return callback(data);
+            });
+        };
+        
+        console.log('🎯 Emergency test page loaded');
+    </script>
+</body>
+</html>
