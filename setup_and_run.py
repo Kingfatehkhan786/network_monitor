@@ -66,47 +66,6 @@ class NetworkMonitorSetup:
         if self.is_linux:
             self._setup_linux()
         elif self.is_windows:
-            self._setup_windows()
-        elif self.is_macos:
-            self._setup_macos()
-        else:
-            print("❓ Unknown OS - using basic setup")
-    
-    def _setup_linux(self):
-        """Setup for Linux/Ubuntu"""
-        print("🐧 Setting up for Linux/Ubuntu...")
-        
-        # Check if we have sudo access
-        if os.geteuid() != 0 and shutil.which('sudo'):
-            print("🔒 Installing system packages (requires sudo)...")
-            
-            packages = [
-                # Basic requirements
-                'python3', 'python3-pip', 'python3-venv', 'python3-dev',
-                # Network tools  
-                'net-tools', 'iputils-ping', 'traceroute', 'nmap', 'arp-scan',
-                'dnsutils', 'whois', 'netcat-openbsd', 'tcpdump',
-                # Editors
-                'nano', 'vim', 'curl', 'wget'
-            ]
-            
-            # Update package list
-            self._run_command(['sudo', 'apt-get', 'update'], check=False)
-            
-            # Install packages
-            cmd = ['sudo', 'apt-get', 'install', '-y'] + packages
-            if self._run_command(cmd, check=False):
-                print("✅ Linux packages installed")
-            
-            # Set network capabilities
-            capabilities = [
-                ['sudo', 'setcap', 'cap_net_raw+ep', '/bin/ping'],
-                ['sudo', 'setcap', 'cap_net_raw+ep', '/usr/bin/traceroute'],
-                ['sudo', 'setcap', 'cap_net_raw+ep', '/usr/bin/nmap']
-            ]
-            
-            for cap_cmd in capabilities:
-                self._run_command(cap_cmd, check=False)
         
         # Check available tools
         self._check_network_tools_linux()

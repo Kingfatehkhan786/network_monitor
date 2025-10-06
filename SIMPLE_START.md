@@ -31,32 +31,39 @@ python setup_and_run.py --run
 1. Detects your operating system
 2. Installs system dependencies (Linux only)
 3. Creates Python virtual environment
-4. Installs Python packages
 5. Integrates OS-appropriate network tools
 6. Fixes all timestamp and command issues
 7. Starts the application
 
 ### 🌐 **Access Your Monitor**
-Once started, visit:
-- **Main Dashboard**: http://localhost
-- **Speed Test**: http://localhost/speed-test
-- **Network Discovery**: http://localhost/devices
+Once running, open: **http://localhost:5000**
 
-## Manual Options
+## 🚀 Quick Start (Any OS)
 
+### Option 1: Enhanced Ubuntu Setup (Python 3.13) ⭐
 ```bash
-# Setup only (don't start)
-python3 setup_and_run.py --setup-only
+# Clone the repository
+git clone https://github.com/Kingfatehkhan786/network_monitor.git
+cd network_monitor
 
-# Run on different port
-python3 setup_and_run.py --run --port 8080
+# Enhanced Ubuntu setup with Python 3.13 + all tools
+make setup-ubuntu
 
-# Just run (skip setup)
-python3 setup_and_run.py --run --no-setup
+# Run the application
+make run
 ```
 
-## Makefile Commands (Linux/macOS)
+### Option 2: Basic Setup (All OS)
+```bash
+# Clone the repository
+git clone https://github.com/Kingfatehkhan786/network_monitor.git
+cd network_monitor
 
+# Setup and run (detects your OS automatically)
+make run
+```
+
+### Option 3: Manual Python Setup 
 ```bash
 make setup    # Setup everything  
 make run      # Setup and run
