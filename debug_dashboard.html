@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Network Monitor Debug</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #2c3e50; color: white; padding: 20px; }
+        .debug-box { background: #34495e; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .status { display: inline-block; padding: 5px 10px; border-radius: 4px; margin: 2px; }
+        .online { background: #27ae60; }
+        .offline { background: #e74c3c; }
+        .waiting { background: #f39c12; }
+        pre { background: #1a1a1a; padding: 10px; overflow-x: auto; max-height: 200px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .stat-card { background: #3498db; padding: 15px; border-radius: 8px; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Network Monitor Debug Dashboard</h1>
+    
+    <div class="debug-box">
+        <h2>🔌 SocketIO Connection Status</h2>
+        <div id="connection-status" class="status offline">Disconnected</div>
+        <button onclick="testConnection()">Test Connection</button>
+        <button onclick="restartMonitoring()">Restart Monitoring</button>
+    </div>
+    
+    <div class="debug-box">
+        <h2>📊 Live Statistics</h2>
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Cloudflare</h3>
+                <div id="cloudflare-stats">Waiting...</div>
+            </div>
+            <div class="stat-card">
+                <h3>Google</h3>
+                <div id="google-stats">Waiting...</div>
+            </div>
+            <div class="stat-card">
+                <h3>Quad9</h3>
+                <div id="quad9-stats">Waiting...</div>
+            </div>
+            <div class="stat-card">
+                <h3>Internal</h3>
+                <div id="internal-stats">Waiting...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="debug-box">
+        <h2>🎯 Monitoring Thread Status</h2>
+        <div id="thread-status">Loading...</div>
+        <button onclick="checkThreads()">Refresh Status</button>
+    </div>
+    
+    <div class="debug-box">
+        <h2>📡 Live SocketIO Events</h2>
+        <pre id="live-events"></pre>
+        <button onclick="clearEvents()">Clear Events</button>
+    </div>
+    
+    <div class="debug-box">
+        <h2>🧪 Quick Tests</h2>
+        <button onclick="testPing('1.1.1.1')">Test Ping Cloudflare</button>
+        <button onclick="testPing('8.8.8.8')">Test Ping Google</button>
+        <button onclick="testPing('9.9.9.9')">Test Ping Quad9</button>
+        <div id="test-results"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const eventsLog = document.getElementById('live-events');
+        let eventCount = 0;
+
+        // Connection status
+        socket.on('connect', function() {
+            document.getElementById('connection-status').textContent = 'Connected';
+            document.getElementById('connection-status').className = 'status online';
+            logEvent('✅ Connected to server');
+        });
+
+        socket.on('disconnect', function() {
+            document.getElementById('connection-status').textContent = 'Disconnected';
+            document.getElementById('connection-status').className = 'status offline';
+            logEvent('❌ Disconnected from server');
+        });
+
+        // Listen for all ping events
+        socket.on('ping_update_external_cloudflare', function(data) {
+            logEvent('🟠 Cloudflare: ' + JSON.stringify(data));
+            updateStats('cloudflare', data);
+        });
+
+        socket.on('ping_update_external_google', function(data) {
+            logEvent('🔵 Google: ' + JSON.stringify(data));
+            updateStats('google', data);
+        });
+
+        socket.on('ping_update_external_quad9', function(data) {
+            logEvent('🟣 Quad9: ' + JSON.stringify(data));
+            updateStats('quad9', data);
+        });
+
+        socket.on('ping_update_internal', function(data) {
+            logEvent('🏠 Internal: ' + JSON.stringify(data));
+            updateStats('internal', data);
+        });
+
+        // Listen for traceroute events
+        socket.on('traceroute_update_internal', function(data) {
+            logEvent('🗺️ Traceroute: ' + JSON.stringify(data));
+        });
+
+        function logEvent(message) {
+            eventCount++;
+            const timestamp = new Date().toLocaleTimeString();
+            eventsLog.textContent += `[${timestamp}] ${message}\n`;
+            eventsLog.scrollTop = eventsLog.scrollHeight;
+            
+            // Keep only last 50 events
+            const lines = eventsLog.textContent.split('\n');
+            if (lines.length > 50) {
+                eventsLog.textContent = lines.slice(-50).join('\n');
+            }
+        }
+
+        function updateStats(provider, data) {
+            const statsDiv = document.getElementById(provider + '-stats');
+            const content = data.data || 'No data';
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+            
+            statsDiv.innerHTML = `
+                <strong>Last Update:</strong> ${timestamp}<br>
+                <strong>Data:</strong> ${content.substring(0, 100)}...
+            `;
+        }
+
+        function clearEvents() {
+            eventsLog.textContent = '';
+            eventCount = 0;
+        }
+
+        function testConnection() {
+            socket.emit('test', {message: 'Hello from debug dashboard'});
+            logEvent('🧪 Test message sent');
+        }
+
+        function testPing(host) {
+            fetch(`/api/test-ping/${host}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('test-results').innerHTML = 
+                        `<h4>Test Results for ${host}:</h4><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                })
+                .catch(error => {
+                    document.getElementById('test-results').innerHTML = 
+                        `<h4>Error testing ${host}:</h4><pre>${error}</pre>`;
+                });
+        }
+
+        function checkThreads() {
+            fetch('/api/monitoring-status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('thread-status').innerHTML = 
+                        `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                })
+                .catch(error => {
+                    document.getElementById('thread-status').innerHTML = 
+                        `<pre>Error: ${error}</pre>`;
+                });
+        }
+
+        function restartMonitoring() {
+            fetch('/api/restart-monitoring')
+                .then(response => response.json())
+                .then(data => {
+                    logEvent('🔄 Monitoring restart: ' + JSON.stringify(data));
+                })
+                .catch(error => {
+                    logEvent('❌ Restart failed: ' + error);
+                });
+        }
+
+        // Auto-refresh thread status every 10 seconds
+        setInterval(checkThreads, 10000);
+        
+        // Initial load
+        checkThreads();
+    </script>
+</body>
+</html>

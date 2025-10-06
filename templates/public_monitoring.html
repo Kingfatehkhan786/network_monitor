@@ -255,30 +255,79 @@
             logLine.className = 'log-line';
 
             const timestamp = formatTimestamp(data.timestamp);
-            let content = data.data;
+            let content = data.data;            
+            // Debug: Log received data
+            console.log(`📡 Received ${eventName}:`, data);
+            console.log(`📊 Content: "${content}"`);
+            console.log(`📈 Packets sent: ${packetsSent}, received: ${packetsReceived}`);
+            
             let lineClass = '';
 
-            // Handle ping monitoring
+            // Handle ping monitoring (Windows, Linux, macOS)
             if (monitorType === 'ping') {
-                // Only count actual ping attempts
-                if (content.includes('Reply from') || content.includes('bytes from') || content.includes('Request timed out') || content.includes('timeout')) {
+                let isPingResult = false;
+                let isSuccess = false;
+                let latency = null;
+                
+                // Detect ping results across different OS
+                // Windows: "Reply from 1.1.1.1: bytes=32 time=15ms TTL=57"
+                // Linux: "64 bytes from 1.1.1.1: icmp_seq=1 ttl=57 time=15.2 ms"
+                // macOS: "64 bytes from 1.1.1.1: icmp_seq=0 ttl=57 time=15.123 ms"
+                
+                if (content.includes('Reply from') || 
+                    content.includes('bytes from') || 
+                    content.includes('Request timed out') || 
+                    content.includes('timeout') ||
+                    content.includes('no answer') ||
+                    content.includes('100% packet loss')) {
+                    
+                    isPingResult = true;
                     packetsSent++;
                     
+                    // Check for successful ping
                     if (content.includes('Reply from') || content.includes('bytes from')) {
                         packetsReceived++;
+                        isSuccess = true;
                         lineClass = 'success';
-                        const timeMatch = content.match(/time[=<]([\d.]+)\s*ms/);
-                        if (timeMatch) {
-                            latencies.push(parseFloat(timeMatch[1]));
+                        
+                        // Extract latency - multiple patterns
+                        const timePatterns = [
+                            /time[=<]([\d.]+)\s*ms/i,           // Windows: time=15ms
+                            /time=([\d.]+)\s*ms/i,             // Linux: time=15.2 ms  
+                            /time\s+([\d.]+)\s*ms/i,          // Alternative format
+                            /([\d.]+)\s*ms/                     // Just find any number+ms
+                        ];
+                        
+                        for (const pattern of timePatterns) {
+                            const match = content.match(pattern);
+                            if (match) {
+                                latency = parseFloat(match[1]);
+                                latencies.push(latency);
+                                break;
+                            }
                         }
+                        
                         statusDot.className = 'status-dot';
                         statusText.textContent = 'Online';
-                    } else if (content.includes('Request timed out') || content.includes('timeout')) {
+                        document.getElementById(`status-value-${host.name}`).textContent = 'Online';
+                        
+                    } else if (content.includes('Request timed out') || 
+                               content.includes('timeout') || 
+                               content.includes('no answer')) {
                         lineClass = 'error';
                         statusDot.className = 'status-dot warning';
                         statusText.textContent = 'Issues';
+                        document.getElementById(`status-value-${host.name}`).textContent = 'Timeout';
                     }
+                    
                     updateStats();
+                }
+                
+                // Also handle ping start messages
+                if (content.includes('Ping') || content.includes('PING')) {
+                    statusDot.className = 'status-dot warning';
+                    statusText.textContent = 'Running...';
+                    document.getElementById(`status-value-${host.name}`).textContent = 'Running';
                 }
             } else if (monitorType === 'traceroute') {
                 // Handle traceroute monitoring
@@ -293,7 +342,7 @@
                     document.getElementById(`status-value-${host.name}`).textContent = 'Complete';
                     document.getElementById(`result-${host.name}`).textContent = 'Success';
                     lineClass = 'success';
-                } else if (content.match(/^\s*\d+\s+\d+\s+ms/)) {
+                } else if (content.match(/^\s*\d+\s+/) && (content.includes('ms') || content.includes('*'))) {
                     // Hop detected
                     hopCount++;
                     document.getElementById(`hops-count-${host.name}`).textContent = hopCount;

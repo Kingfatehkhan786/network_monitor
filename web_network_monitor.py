@@ -492,61 +492,97 @@ def add_to_queue(queue_obj, data, max_size=100):
 
 # --- Monitoring Functions ---
 def ping_monitor(host, label, log_file, data_queue):
-    """Monitor ping in background thread"""
-    system_name = platform.system().lower()
+    """Fixed ping monitor with proper OS detection"""
+    print(f"🔍 Starting ping monitor for {label} ({host})")
     
-    if system_name == "windows":
-        ping_cmd = ["ping", "-t", host]
-    elif system_name == "darwin":  # macOS
-        ping_cmd = get_os_ping_cmd(host)
-    else:  # Linux and others
-        ping_cmd = get_os_ping_cmd(host)
-
+    # Use OS-appropriate ping command
+    ping_cmd = get_os_ping_cmd(host)
+    print(f"📡 Ping command: {' '.join(ping_cmd)}")
+    
     while True:
         try:
-            process = subprocess.Popen(ping_cmd, 
-                                     stdout=subprocess.PIPE, 
-                                     stderr=subprocess.STDOUT, 
-                                     text=True, 
-                                     universal_newlines=True, 
-                                     bufsize=1)
+            process = subprocess.Popen(
+                ping_cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT, 
+                text=True, 
+                universal_newlines=True, 
+                bufsize=1
+            )
 
             for line in iter(process.stdout.readline, ''):
-                if line.strip() == "" or "Pinging" in line or "64 bytes" in line:
+                line = line.strip()
+                if not line:
                     continue
-
-                log_line = f"{datetime.now().strftime('%H:%M:%S')}: {line.strip()}\n"
+                
+                # OS-specific filtering
+                skip_patterns = []
+                if IS_WINDOWS:
+                    skip_patterns = ["Pinging", "Ping statistics", "Packets:"]
+                elif IS_LINUX:
+                    skip_patterns = ["PING ", "ping statistics", "packets transmitted", "---"]
+                else:  # macOS
+                    skip_patterns = ["PING ", "---"]
+                
+                # Skip unwanted lines
+                if any(pattern in line for pattern in skip_patterns):
+                    continue
+                
+                # Log the ping result
+                current_time = datetime.now()
+                log_line = f"[{current_time.strftime('%H:%M:%S')}] {line}\n"
                 append_to_log(log_file, log_line)
                 
-                # Add to queue for real-time display
+                # Create log entry with proper timestamp
                 log_entry = {
-                    'timestamp': datetime.now().isoformat(),
-                    'data': line.strip(),
+                    'timestamp': current_time.isoformat(),  # ISO format for JavaScript
+                    'display_time': current_time.strftime('%H:%M:%S'),
+                    'data': line,
                     'type': 'ping',
                     'host': host,
                     'label': label
                 }
                 add_to_queue(data_queue, log_entry)
                 
-                # Emit to connected clients
-                socketio.emit(f'ping_update_{label.lower().replace("_", "_")}', log_entry)
+                # Emit SocketIO event with correct naming
+                event_name = f'ping_update_{label.lower()}'
                 
-                # Reload settings to get the latest ping interval
-                settings_file = os.path.join(LOG_FOLDER, 'app_settings.json')
-                ping_interval = 5  # Default
-                if os.path.exists(settings_file):
-                    with open(settings_file, 'r') as f:
-                        try:
-                            settings = json.load(f)
-                            ping_interval = settings.get('ping_interval', 5)
-                        except json.JSONDecodeError:
-                            pass
-                time.sleep(ping_interval)
+                if "external" in label.lower():
+                    # Map IPs to provider names for external monitoring
+                    provider_map = {
+                        '1.1.1.1': 'cloudflare',
+                        '8.8.8.8': 'google', 
+                        '9.9.9.9': 'quad9'
+                    }
+                    provider = provider_map.get(host, 'unknown')
+                    event_name = f'ping_update_external_{provider}'
+                elif "internal" in label.lower():
+                    event_name = 'ping_update_internal'
+                
+                print(f"📡 Emitting: {event_name}")
+                socketio.emit(event_name, log_entry)
+                
+                # Sleep between pings (OS appropriate)
+                if IS_LINUX:
+                    time.sleep(1)  # Linux ping has built-in interval
+                else:
+                    time.sleep(2)  # Windows/macOS need manual sleep
 
             process.stdout.close()
             process.wait()
+            
         except Exception as e:
-            print(f"Ping monitor error for {label}: {e}")
+            print(f"❌ Ping monitor error for {label}: {e}")
+            # Send error to UI
+            error_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'display_time': datetime.now().strftime('%H:%M:%S'),
+                'data': f"Ping error: {str(e)}",
+                'type': 'error',
+                'host': host,
+                'label': label
+            }
+            add_to_queue(data_queue, error_entry)
             time.sleep(5)
 
 def traceroute_monitor(host, label, log_file, data_queue):
@@ -1384,13 +1420,113 @@ def start_monitoring_threads():
     
     print("All monitoring threads started successfully!")
 
+
+@app.route('/api/monitoring-status')
+def api_monitoring_status():
+    """Check status of monitoring threads"""
+    try:
+        import threading
+        
+        # Get all active threads
+        active_threads = [t.name for t in threading.enumerate() if t.is_alive()]
+        
+        # Check for monitoring threads
+        ping_threads = [t for t in active_threads if 'ping' in t.name.lower()]
+        traceroute_threads = [t for t in active_threads if 'traceroute' in t.name.lower()]
+        
+        status = {
+            'total_threads': len(active_threads),
+            'ping_monitors_running': len(ping_threads),
+            'traceroute_monitors_running': len(traceroute_threads),
+            'active_threads': active_threads,
+            'ping_threads': ping_threads,
+            'traceroute_threads': traceroute_threads,
+            'os_detected': CURRENT_OS if 'CURRENT_OS' in globals() else platform.system().lower(),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/test-ping/<host>')
+def api_test_ping(host):
+    """Test a single ping to verify connectivity"""
+    try:
+        # Use OS-appropriate ping command for single test
+        if 'get_os_ping_cmd' in globals():
+            ping_cmd = get_os_ping_cmd(host, count=1)  # Single ping
+        else:
+            # Fallback
+            if platform.system().lower() == 'windows':
+                ping_cmd = ['ping', '-n', '1', host]
+            else:
+                ping_cmd = ['ping', '-c', '1', host]
+        
+        import subprocess
+        result = subprocess.run(
+            ping_cmd,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        return jsonify({
+            'host': host,
+            'command': ' '.join(ping_cmd),
+            'success': result.returncode == 0,
+            'output': result.stdout[:500],  # Limit output
+            'error': result.stderr[:200] if result.stderr else None,
+            'return_code': result.returncode,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+
+@app.route('/debug')
+def debug_dashboard():
+    """Debug dashboard to troubleshoot monitoring issues"""
+    return send_file('debug_dashboard.html')
+
+@app.route('/api/restart-monitoring')
+def api_restart_monitoring():
+    """Manually restart monitoring threads"""
+    try:
+        print("🔄 Manual restart of monitoring threads requested")
+        
+        # Start monitoring threads again
+        if 'start_monitoring_threads' in globals():
+            start_monitoring_threads()
+            return jsonify({
+                'message': 'Monitoring threads restarted',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'error': 'start_monitoring_threads function not found',
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Network Monitor')
+    parser.add_argument('--port', type=int, default=5000, help='Port to run the web server on')
+    args = parser.parse_args()
+
     print("Initializing Network Monitor Web Application...")
+    print(f"🖥️ Running on: {platform.system()}")
+    print(f"🌐 Server will start on port: {args.port}")
     print(f"Memory Management: Garbage collection runs every {GC_INTERVAL//60} minutes.")
     
     start_monitoring_threads()
     
     # Run the Flask-SocketIO application
-        # Note: For Windows development, we can't use Gunicorn.
-    # The Makefile handles Gunicorn for Linux production.
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
+    print(f"🚀 Starting server on http://0.0.0.0:{args.port}")
+    socketio.run(app, host='0.0.0.0', port=args.port, debug=False, allow_unsafe_werkzeug=True)
