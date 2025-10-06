@@ -8,6 +8,11 @@ requests==2.31.0
 beautifulsoup4==4.14.2
 sch-way2sms==0.0.1
 
+# Ubuntu container networking
+python-nmap==0.7.1
+netaddr==1.0.0
+ipaddress>=1.0.0
+
 # Optional Windows support
 windows-curses; sys_platform == "win32"
 iperf3==0.1.11

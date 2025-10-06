@@ -464,9 +464,9 @@ def ping_monitor(host, label, log_file, data_queue):
     if system_name == "windows":
         ping_cmd = ["ping", "-t", host]
     elif system_name == "darwin":  # macOS
-        ping_cmd = ["ping", "-c", "0", "-i", "1", "-W", "3", host]
+        ping_cmd = ["ping", host]
     else:  # Linux and others
-        ping_cmd = ["ping", "-c", "0", "-i", "1", "-W", "3", host]
+        ping_cmd = ["ping", host]
 
     while True:
         try:
@@ -478,7 +478,7 @@ def ping_monitor(host, label, log_file, data_queue):
                                      bufsize=1)
 
             for line in iter(process.stdout.readline, ''):
-                if line.strip() == "" or "PING " in line or "ping statistics" in line or "packets transmitted" in line:
+                if line.strip() == "" or "Pinging" in line or "64 bytes" in line:
                     continue
 
                 log_line = f"{datetime.now().strftime('%H:%M:%S')}: {line.strip()}\n"
@@ -486,7 +486,7 @@ def ping_monitor(host, label, log_file, data_queue):
                 
                 # Add to queue for real-time display
                 log_entry = {
-                    'timestamp': datetime.now().isoformat(),
+                    'timestamp': datetime.now().strftime('%H:%M:%S'),
                     'data': line.strip(),
                     'type': 'ping',
                     'host': host,
@@ -536,7 +536,7 @@ def traceroute_monitor(host, label, log_file, data_queue):
                 append_to_log(log_file, error_msg)
                 
                 log_entry = {
-                    'timestamp': datetime.now().isoformat(),
+                    'timestamp': datetime.now().strftime('%H:%M:%S'),
                     'data': f"Error: Host {host} is not reachable via ping. Traceroute disabled.",
                     'type': 'traceroute',
                     'host': host,
@@ -555,7 +555,7 @@ def traceroute_monitor(host, label, log_file, data_queue):
             
             # Emit start message
             start_entry = {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now().strftime('%H:%M:%S'),
                 'data': f"Traceroute started to {host}",
                 'type': 'traceroute',
                 'host': host,
@@ -575,7 +575,7 @@ def traceroute_monitor(host, label, log_file, data_queue):
                     append_to_log(log_file, line)
                     
                     log_entry = {
-                        'timestamp': datetime.now().isoformat(),
+                        'timestamp': datetime.now().strftime('%H:%M:%S'),
                         'data': line.strip(),
                         'type': 'traceroute',
                         'host': host,
@@ -781,7 +781,7 @@ def device_monitor():
             
             # Add to queue and emit
             device_data = {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now().strftime('%H:%M:%S'),
                 'devices': device_list,
                 'total_count': len(device_list),
                 'new_devices': len(new_devices)
